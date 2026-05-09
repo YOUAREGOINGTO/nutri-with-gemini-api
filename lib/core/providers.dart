@@ -42,10 +42,11 @@ Future<UserProfile?> userProfile(Ref ref) async {
 
 @Riverpod(keepAlive: true)
 Future<AIService> aiService(Ref ref) async {
-  final apiKey = await ref.watch(apiKeyProvider.future);
   final settings = ref.watch(settingsServiceProvider);
+  final provider = await settings.getAIProvider();
+  final apiKey = await settings.getApiKeyForProvider(provider);
   final model = await settings.getAIModel();
-  return AIService(apiKey: apiKey ?? '', model: model);
+  return AIService(apiKey: apiKey ?? '', model: model, provider: provider);
 }
 
 @Riverpod(keepAlive: true)

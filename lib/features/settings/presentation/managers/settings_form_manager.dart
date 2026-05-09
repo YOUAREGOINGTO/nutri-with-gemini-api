@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/domain/user_profile.dart';
+import 'package:nutrinutri/core/providers.dart';
 import 'package:nutrinutri/features/settings/presentation/settings_controller.dart';
 
 class SettingsFormManager {
   SettingsFormManager({required this.ref, required this.onStateChanged}) {
     apiKeyController.addListener(onStateChanged);
+    customModelController.addListener(onStateChanged);
     ageController.addListener(_calculateRecommendedCalories);
     weightController.addListener(_calculateRecommendedCalories);
     heightController.addListener(_calculateRecommendedCalories);
@@ -71,6 +74,30 @@ class SettingsFormManager {
     onStateChanged();
   }
 
+  Future<void> changeProvider(AIProvider provider) async {
+    final controller = ref.read(settingsControllerProvider.notifier);
+    controller.updateProvider(provider);
+
+    final key = await ref
+        .read(settingsServiceProvider)
+        .getApiKeyForProvider(provider);
+    apiKeyController.text = key ?? '';
+    customModelController.clear();
+
+    if (provider == AIProvider.gemini && key?.trim().isNotEmpty == true) {
+      await controller.refreshGeminiModels(apiKey: key!);
+    }
+
+    onStateChanged();
+  }
+
+  Future<void> refreshGeminiModels() async {
+    await ref
+        .read(settingsControllerProvider.notifier)
+        .refreshGeminiModels(apiKey: apiKeyController.text);
+    onStateChanged();
+  }
+
   void _calculateRecommendedCalories() {
     final age = int.tryParse(ageController.text);
     final weight = double.tryParse(weightController.text);
@@ -120,7 +147,9 @@ class SettingsFormManager {
     final state = ref.read(settingsControllerProvider);
     return Object.hashAll([
       apiKeyController.text,
+      state.provider,
       state.selectedModel,
+      state.fallbackModel,
       customModelController.text,
       ageController.text,
       weightController.text,

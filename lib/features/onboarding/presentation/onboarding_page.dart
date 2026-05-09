@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -271,9 +273,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       case 2:
       default:
         return const _OnboardingStep(
-          title: 'Connect OpenRouter',
-          description:
-              'Add your API key and AI model settings for food analysis.',
+          title: 'Connect AI',
+          description: 'Add your AI provider key and model settings.',
         );
     }
   }
@@ -317,17 +318,27 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       case 2:
       default:
         return AIConfigurationSection(
+          provider: state.provider,
           apiKeyController: _formManager.apiKeyController,
           customModelController: _formManager.customModelController,
           selectedModel: state.selectedModel,
           fallbackModel: state.fallbackModel,
           availableModels: controller.availableModels,
+          isLoadingModels: state.isLoadingModels,
+          modelLoadError: state.modelLoadError,
+          onProviderChanged: (value) {
+            if (value != null) {
+              unawaited(_formManager.changeProvider(value));
+            }
+          },
           onModelChanged: (value) {
             if (value != null) {
               controller.updateModel(value);
             }
           },
           onFallbackModelChanged: controller.updateFallbackModel,
+          onRefreshModels: () =>
+              unawaited(_formManager.refreshGeminiModels()),
         );
     }
   }

@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:nutrinutri/core/db/app_database.dart';
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/domain/user_profile.dart';
 import 'package:nutrinutri/core/services/device_id_service.dart';
@@ -11,6 +14,9 @@ class SettingsService {
 
   static const _settingsId = 1;
   static const _profileId = 1;
+  static const _prefAIProvider = 'ai_provider';
+  static const _prefGeminiApiKey = 'gemini_api_key';
+  static const _providerModelSeparator = ':';
 
   Future<({String deviceId, int now})> _audit() async {
     final deviceId = await _deviceId.getOrCreate();
@@ -19,33 +25,95 @@ class SettingsService {
   }
 
   Future<void> saveApiKey(String key) async {
-    await _updateSettings(
-      apiKey: Value(key.trim().isEmpty ? null : key.trim()),
-    );
+    await saveApiKeyForProvider(AIProvider.openRouter, key);
   }
 
   Future<String?> getApiKey() async {
-    return (await _settings())?.apiKey;
+    return getApiKeyForProvider(await getAIProvider());
+  }
+
+  Future<String?> getOpenRouterApiKey() async {
+    return getApiKeyForProvider(AIProvider.openRouter);
+  }
+
+  Future<void> saveApiKeyForProvider(AIProvider provider, String key) async {
+    final keys = _decodeApiKeys((await _settings())?.apiKey);
+    final normalized = key.trim();
+    if (normalized.isEmpty) {
+      keys.remove(provider.id);
+    } else {
+      keys[provider.id] = normalized;
+    }
+
+    await _updateSettings(apiKey: Value(_encodeApiKeys(keys)));
+  }
+
+  Future<String?> getApiKeyForProvider(AIProvider provider) async {
+    final keys = _decodeApiKeys((await _settings())?.apiKey);
+    final key = keys[provider.id];
+    if (key != null && key.isNotEmpty) return key;
+
+    if (provider == AIProvider.gemini) {
+      return _localPref(_prefGeminiApiKey);
+    }
+
+    return null;
+  }
+
+  Future<void> saveAIProvider(AIProvider provider) async {
+    await _saveLocalPref(_prefAIProvider, provider.id);
+  }
+
+  Future<AIProvider> getAIProvider() async {
+    final settings = await _settings();
+    final modelProvider = _providerFromModelSetting(settings?.aiModel);
+    if (modelProvider != null) return modelProvider;
+
+    return AIProvider.fromId(await _localPref(_prefAIProvider));
   }
 
   Future<void> saveAIModel(String model) async {
-    await _updateSettings(aiModel: Value(model.trim()));
+    await saveAIModelForProvider(await getAIProvider(), model);
+  }
+
+  Future<void> saveAIModelForProvider(AIProvider provider, String model) async {
+    await _updateSettings(aiModel: Value(_encodeModel(provider, model.trim())));
   }
 
   Future<String> getAIModel() async {
-    return (await _settings())?.aiModel ?? 'google/gemini-3-flash-preview';
+    final settings = await _settings();
+    final provider =
+        _providerFromModelSetting(settings?.aiModel) ??
+        AIProvider.fromId(await _localPref(_prefAIProvider));
+    final rawModel = settings?.aiModel;
+    return rawModel == null
+        ? provider.defaultModel
+        : _modelFromSetting(rawModel);
   }
 
   Future<void> saveFallbackModel(String? model) async {
+    final provider = await getAIProvider();
+    final normalized = model?.trim();
     await _updateSettings(
       fallbackModel: Value(
-        model?.trim().isEmpty == true ? null : model?.trim(),
+        normalized == null || normalized.isEmpty
+            ? null
+            : _encodeModel(provider, normalized),
       ),
     );
   }
 
   Future<String?> getFallbackModel() async {
-    return (await _settings())?.fallbackModel;
+    final settings = await _settings();
+    final rawModel = settings?.fallbackModel;
+    if (rawModel == null) return null;
+
+    final fallbackProvider = _providerFromModelSetting(rawModel);
+    if (fallbackProvider != null && fallbackProvider != await getAIProvider()) {
+      return null;
+    }
+
+    return _modelFromSetting(rawModel);
   }
 
   Future<void> saveUserProfile({
@@ -164,9 +232,10 @@ class SettingsService {
     final existing = await _settings();
 
     final nextApiKey = apiKey.present ? apiKey.value : existing?.apiKey;
+    final provider = await getAIProvider();
     final nextAiModel = aiModel.present
         ? aiModel.value
-        : (existing?.aiModel ?? 'google/gemini-3-flash-preview');
+        : (existing?.aiModel ?? _encodeModel(provider, provider.defaultModel));
     final nextFallbackModel = fallbackModel.present
         ? fallbackModel.value
         : existing?.fallbackModel;
@@ -189,5 +258,87 @@ class SettingsService {
 
   double _roundMetricValue(double value) {
     return (value * 10).roundToDouble() / 10;
+  }
+
+  Future<String?> _localPref(String key) async {
+    final row =
+        await (_db.select(_db.localPrefs)..where((t) => t.key.equals(key)))
+            .getSingleOrNull();
+    return row?.value;
+  }
+
+  Future<void> _saveLocalPref(String key, String? value) async {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      await (_db.delete(_db.localPrefs)..where((t) => t.key.equals(key))).go();
+      return;
+    }
+
+    await _db
+        .into(_db.localPrefs)
+        .insertOnConflictUpdate(
+          LocalPrefsCompanion.insert(key: key, value: normalized),
+        );
+  }
+
+  Map<String, String> _decodeApiKeys(String? raw) {
+    final trimmed = raw?.trim();
+    if (trimmed == null || trimmed.isEmpty) return {};
+
+    if (!trimmed.startsWith('{')) {
+      return {AIProvider.openRouter.id: trimmed};
+    }
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is! Map) return {};
+      return {
+        for (final entry in decoded.entries)
+          if (entry.key is String &&
+              entry.value is String &&
+              (entry.value as String).trim().isNotEmpty)
+            entry.key as String: (entry.value as String).trim(),
+      };
+    } catch (_) {
+      return {AIProvider.openRouter.id: trimmed};
+    }
+  }
+
+  String? _encodeApiKeys(Map<String, String> keys) {
+    final normalized = {
+      for (final entry in keys.entries)
+        if (entry.value.trim().isNotEmpty) entry.key: entry.value.trim(),
+    };
+    return normalized.isEmpty ? null : jsonEncode(normalized);
+  }
+
+  String _encodeModel(AIProvider provider, String model) {
+    return '${provider.id}$_providerModelSeparator$model';
+  }
+
+  String _modelFromSetting(String raw) {
+    for (final provider in AIProvider.values) {
+      final prefix = '${provider.id}$_providerModelSeparator';
+      if (raw.startsWith(prefix)) return raw.substring(prefix.length);
+    }
+    return raw;
+  }
+
+  AIProvider? _providerFromModelSetting(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+
+    for (final provider in AIProvider.values) {
+      if (raw.startsWith('${provider.id}$_providerModelSeparator')) {
+        return provider;
+      }
+    }
+
+    if (raw.startsWith('gemini-') || raw.startsWith('models/gemini-')) {
+      return AIProvider.gemini;
+    }
+
+    if (raw.contains('/')) return AIProvider.openRouter;
+
+    return null;
   }
 }

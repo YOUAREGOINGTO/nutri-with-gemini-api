@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/providers.dart';
 import 'package:nutrinutri/core/services/google_user_info.dart';
 import 'package:nutrinutri/core/utils/platform_helper.dart';
@@ -128,6 +129,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     controller.updateModel(value);
   }
 
+  void _onProviderChanged(AIProvider? value) {
+    if (value == null) return;
+    unawaited(_formManager.changeProvider(value));
+  }
+
   void _onGenderChanged(SettingsController controller, String? value) {
     if (value == null) return;
     controller.updateGender(value);
@@ -173,6 +179,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       currentUser: currentUser,
       controller: controller,
       formManager: _formManager,
+      onProviderChanged: _onProviderChanged,
       onModelChanged: (value) => _onModelChanged(controller, value),
       onFallbackModelChanged: controller.updateFallbackModel,
       onGenderChanged: (value) => _onGenderChanged(controller, value),
@@ -180,6 +187,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _onActivityLevelChanged(controller, value),
       onSync: () => unawaited(_handleSync()),
       onOpenLicenses: () => unawaited(_openLicenses()),
+      onRefreshGeminiModels: () =>
+          unawaited(_formManager.refreshGeminiModels()),
     );
 
     return PopScope(
@@ -269,24 +278,28 @@ class _SettingsSections extends StatelessWidget {
     required this.currentUser,
     required this.controller,
     required this.formManager,
+    required this.onProviderChanged,
     required this.onModelChanged,
     required this.onFallbackModelChanged,
     required this.onGenderChanged,
     required this.onActivityLevelChanged,
     required this.onSync,
     required this.onOpenLicenses,
+    required this.onRefreshGeminiModels,
   });
 
   final SettingsState state;
   final GoogleUserInfo? currentUser;
   final SettingsController controller;
   final SettingsFormManager formManager;
+  final ValueChanged<AIProvider?> onProviderChanged;
   final ValueChanged<String?> onModelChanged;
   final ValueChanged<String?> onFallbackModelChanged;
   final ValueChanged<String?> onGenderChanged;
   final ValueChanged<String?> onActivityLevelChanged;
   final VoidCallback onSync;
   final VoidCallback onOpenLicenses;
+  final VoidCallback onRefreshGeminiModels;
 
   @override
   Widget build(BuildContext context) {
@@ -294,13 +307,18 @@ class _SettingsSections extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AIConfigurationSection(
+          provider: state.provider,
           apiKeyController: formManager.apiKeyController,
           customModelController: formManager.customModelController,
           selectedModel: state.selectedModel,
           fallbackModel: state.fallbackModel,
           availableModels: controller.availableModels,
+          isLoadingModels: state.isLoadingModels,
+          modelLoadError: state.modelLoadError,
+          onProviderChanged: onProviderChanged,
           onModelChanged: onModelChanged,
           onFallbackModelChanged: onFallbackModelChanged,
+          onRefreshModels: onRefreshGeminiModels,
         ),
         const _SettingsSectionBreak(),
         SyncSection(

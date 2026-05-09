@@ -1,24 +1,124 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/domain/user_profile.dart';
 
+class GeminiModelDescriptor {
+  const GeminiModelDescriptor({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.inputTokenLimit,
+    required this.outputTokenLimit,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final int? inputTokenLimit;
+  final int? outputTokenLimit;
+
+  static GeminiModelDescriptor? fromJson(Map<String, dynamic> json) {
+    final methods = (json['supportedGenerationMethods'] as List? ?? const [])
+        .map((method) => method.toString())
+        .toSet();
+    if (!methods.contains('generateContent')) return null;
+
+    final rawName = json['name']?.toString() ?? '';
+    final id = rawName.startsWith('models/')
+        ? rawName.substring('models/'.length)
+        : rawName;
+    if (id.isEmpty || !id.startsWith('gemini-')) return null;
+
+    return GeminiModelDescriptor(
+      id: id,
+      name: (json['displayName']?.toString().trim().isNotEmpty == true)
+          ? json['displayName'].toString().trim()
+          : _titleFromModelId(id),
+      description: json['description']?.toString() ?? '',
+      inputTokenLimit: _toInt(json['inputTokenLimit']),
+      outputTokenLimit: _toInt(json['outputTokenLimit']),
+    );
+  }
+}
+
 class AIService {
-  AIService({required this.apiKey, required this.model});
-  static const String _baseUrl =
+  AIService({
+    required this.apiKey,
+    required this.model,
+    this.provider = AIProvider.openRouter,
+  });
+
+  static const String _openRouterBaseUrl =
       'https://openrouter.ai/api/v1/chat/completions';
+  static const String _geminiBaseUrl =
+      'https://generativelanguage.googleapis.com/v1beta';
+
   final String apiKey;
   final String model;
+  final AIProvider provider;
 
   // Track active clients for cancellation
   final Map<String, http.Client> _activeRequests = {};
 
-  Map<String, String> _headers() => {
+  static Future<List<GeminiModelDescriptor>> listGeminiModels({
+    required String apiKey,
+  }) async {
+    if (apiKey.trim().isEmpty) return const [];
+
+    final client = http.Client();
+    final models = <GeminiModelDescriptor>[];
+    String? pageToken;
+
+    try {
+      do {
+        final uri = Uri.parse('$_geminiBaseUrl/models').replace(
+          queryParameters: {
+            'key': apiKey.trim(),
+            'pageSize': '1000',
+            if (pageToken != null) 'pageToken': pageToken,
+          },
+        );
+        final response = await client.get(uri);
+
+        if (response.statusCode != 200) {
+          throw Exception(
+            'Gemini model list error: ${response.statusCode} - ${response.body}',
+          );
+        }
+
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final rawModels = data['models'] as List? ?? const [];
+        for (final rawModel in rawModels) {
+          if (rawModel is! Map) continue;
+          final model = GeminiModelDescriptor.fromJson(
+            Map<String, dynamic>.from(rawModel),
+          );
+          if (model != null) {
+            models.add(model);
+          }
+        }
+
+        pageToken = data['nextPageToken']?.toString();
+      } while (pageToken != null && pageToken.isNotEmpty);
+    } finally {
+      client.close();
+    }
+
+    models.sort(_compareGeminiModels);
+    return models;
+  }
+
+  Map<String, String> _openRouterHeaders() => {
     'Authorization': 'Bearer $apiKey',
     'Content-Type': 'application/json',
-    'HTTP-Referer': 'https://nutrinutri.popelis.sk', // OpenRouter requirement
+    'HTTP-Referer': 'https://nutrinutri.popelis.sk',
     'X-Title': 'NutriNutri',
   };
+
+  Map<String, String> _geminiHeaders() => {'Content-Type': 'application/json'};
 
   List<Map<String, dynamic>> _foodMessages({
     String? textDescription,
@@ -139,26 +239,19 @@ Calculate calories based on the user profile provided and standard MET values.
       _activeRequests[requestId] = client;
     }
 
-    final body = jsonEncode({
-      'model': modelOverride ?? model,
-      'messages': messages,
-      'response_format': {'type': 'json_object'},
-    });
-
     try {
-      final response = await client.post(
-        Uri.parse(_baseUrl),
-        headers: _headers(),
-        body: body,
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('AI Error: ${response.statusCode} - ${response.body}');
-      }
-
-      final data = jsonDecode(response.body);
-      final content = data['choices'][0]['message']['content'];
-      return jsonDecode(_extractJson(content));
+      return switch (provider) {
+        AIProvider.openRouter => _openRouterChatCompletion(
+          client: client,
+          messages: messages,
+          modelOverride: modelOverride,
+        ),
+        AIProvider.gemini => _geminiGenerateContent(
+          client: client,
+          messages: messages,
+          modelOverride: modelOverride,
+        ),
+      };
     } catch (e) {
       if (requestId != null &&
           _looksLikeClientException(e) &&
@@ -173,6 +266,171 @@ Calculate calories based on the user profile provided and standard MET values.
       }
       client.close();
     }
+  }
+
+  Future<Map<String, dynamic>> _openRouterChatCompletion({
+    required http.Client client,
+    required List<Map<String, dynamic>> messages,
+    String? modelOverride,
+  }) async {
+    final body = jsonEncode({
+      'model': modelOverride ?? model,
+      'messages': messages,
+      'response_format': {'type': 'json_object'},
+    });
+
+    final response = await client.post(
+      Uri.parse(_openRouterBaseUrl),
+      headers: _openRouterHeaders(),
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('AI Error: ${response.statusCode} - ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    final content = data['choices'][0]['message']['content'];
+    return jsonDecode(_extractJson(content));
+  }
+
+  Future<Map<String, dynamic>> _geminiGenerateContent({
+    required http.Client client,
+    required List<Map<String, dynamic>> messages,
+    String? modelOverride,
+  }) async {
+    final selectedModel = _normalizeGeminiModel(modelOverride ?? model);
+    final body = jsonEncode({
+      ..._geminiSystemInstruction(messages),
+      'contents': _geminiContents(messages),
+      'generationConfig': {'responseMimeType': 'application/json'},
+    });
+
+    final uri = Uri.parse(
+      '$_geminiBaseUrl/models/$selectedModel:generateContent',
+    ).replace(queryParameters: {'key': apiKey});
+
+    final response = await client.post(
+      uri,
+      headers: _geminiHeaders(),
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Gemini Error: ${response.statusCode} - ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final content = _geminiText(data);
+    if (content.isEmpty) {
+      throw Exception('Gemini returned an empty response');
+    }
+    return jsonDecode(_extractJson(content));
+  }
+
+  Map<String, dynamic> _geminiSystemInstruction(
+    List<Map<String, dynamic>> messages,
+  ) {
+    final systemText = messages
+        .where((message) => message['role'] == 'system')
+        .map((message) => message['content']?.toString().trim() ?? '')
+        .where((content) => content.isNotEmpty)
+        .join('\n\n');
+
+    if (systemText.isEmpty) return const {};
+    return {
+      'system_instruction': {
+        'parts': [
+          {'text': systemText},
+        ],
+      },
+    };
+  }
+
+  List<Map<String, dynamic>> _geminiContents(
+    List<Map<String, dynamic>> messages,
+  ) {
+    return messages
+        .where((message) => message['role'] != 'system')
+        .map((message) {
+          final parts = _geminiParts(message['content']);
+          if (parts.isEmpty) return null;
+          return {
+            'role': message['role'] == 'assistant' ? 'model' : 'user',
+            'parts': parts,
+          };
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  List<Map<String, dynamic>> _geminiParts(dynamic content) {
+    if (content is String) {
+      final trimmed = content.trim();
+      return trimmed.isEmpty
+          ? const []
+          : [
+              {'text': trimmed},
+            ];
+    }
+
+    if (content is! List) return const [];
+
+    final parts = <Map<String, dynamic>>[];
+    for (final item in content) {
+      if (item is! Map) continue;
+      final itemMap = Map<String, dynamic>.from(item);
+      switch (itemMap['type']) {
+        case 'text':
+          final text = itemMap['text']?.toString().trim();
+          if (text != null && text.isNotEmpty) {
+            parts.add({'text': text});
+          }
+          break;
+        case 'image_url':
+          final imageUrl = itemMap['image_url'];
+          if (imageUrl is! Map) break;
+          final url = imageUrl['url']?.toString();
+          final inlineData = _inlineDataFromDataUrl(url);
+          if (inlineData != null) {
+            parts.add({'inline_data': inlineData});
+          }
+          break;
+      }
+    }
+    return parts;
+  }
+
+  Map<String, dynamic>? _inlineDataFromDataUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+    final commaIndex = url.indexOf(',');
+    if (!url.startsWith('data:') || commaIndex <= 0) return null;
+
+    final metadata = url.substring('data:'.length, commaIndex);
+    final mimeType = metadata.split(';').first;
+    final data = url.substring(commaIndex + 1);
+    if (mimeType.isEmpty || data.isEmpty) return null;
+
+    return {'mime_type': mimeType, 'data': data};
+  }
+
+  String _geminiText(Map<String, dynamic> data) {
+    final candidates = data['candidates'];
+    if (candidates is! List || candidates.isEmpty) return '';
+    final first = candidates.first;
+    if (first is! Map) return '';
+    final content = first['content'];
+    if (content is! Map) return '';
+    final parts = content['parts'];
+    if (parts is! List) return '';
+
+    return parts
+        .whereType<Map>()
+        .map((part) => part['text']?.toString() ?? '')
+        .where((text) => text.isNotEmpty)
+        .join();
   }
 
   /// Analyzes food from text description or base64 image
@@ -233,4 +491,44 @@ Calculate calories based on the user profile provided and standard MET values.
     }
     return content.trim();
   }
+}
+
+int _compareGeminiModels(
+  GeminiModelDescriptor left,
+  GeminiModelDescriptor right,
+) {
+  final priority = _geminiModelPriority(left.id).compareTo(
+    _geminiModelPriority(right.id),
+  );
+  if (priority != 0) return priority;
+  return left.name.toLowerCase().compareTo(right.name.toLowerCase());
+}
+
+int _geminiModelPriority(String id) {
+  if (id.startsWith('gemini-3.1')) return 0;
+  if (id.startsWith('gemini-3')) return 1;
+  if (id.startsWith('gemini-2.5')) return 2;
+  if (id.startsWith('gemini-2')) return 3;
+  return 4;
+}
+
+String _normalizeGeminiModel(String model) {
+  return model.startsWith('models/') ? model.substring('models/'.length) : model;
+}
+
+String _titleFromModelId(String id) {
+  return id
+      .split('-')
+      .where((part) => part.isNotEmpty)
+      .map((part) {
+        if (part.length <= 2) return part.toUpperCase();
+        return part.substring(0, 1).toUpperCase() + part.substring(1);
+      })
+      .join(' ');
+}
+
+int? _toInt(dynamic value) {
+  if (value is int) return value;
+  if (value is String) return int.tryParse(value);
+  return null;
 }

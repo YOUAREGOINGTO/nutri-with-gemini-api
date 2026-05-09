@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/domain/user_profile.dart';
 import 'package:nutrinutri/core/providers.dart';
+import 'package:nutrinutri/core/services/ai_service.dart';
 import 'package:nutrinutri/core/services/sync_service.dart';
 import 'package:nutrinutri/core/utils/calorie_calculator.dart';
 import 'package:nutrinutri/features/settings/domain/ai_model_info.dart';
@@ -10,31 +12,44 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'settings_controller.g.dart';
 
+const Object _unset = Object();
+
 class SettingsState {
   SettingsState({
     this.isLoading = false,
     this.isSyncing = false,
-    this.selectedModel = 'google/gemini-3-flash-preview',
+    this.isLoadingModels = false,
+    this.provider = AIProvider.openRouter,
+    String? selectedModel,
     this.fallbackModel,
+    this.modelLoadError,
+    this.geminiModels = const [],
     this.gender = 'male',
     this.activityLevel = 'sedentary',
     this.homeMetricTypes = defaultHomeMetricTypes,
-  });
+  }) : selectedModel = selectedModel ?? provider.defaultModel;
 
   final bool isLoading;
   final bool isSyncing;
+  final bool isLoadingModels;
+  final AIProvider provider;
   final String selectedModel;
+  final String? fallbackModel;
+  final String? modelLoadError;
+  final List<AIModelInfo> geminiModels;
   final String gender;
   final String activityLevel;
   final List<NutritionMetricType> homeMetricTypes;
 
-  final String? fallbackModel;
-
   SettingsState copyWith({
     bool? isLoading,
     bool? isSyncing,
+    bool? isLoadingModels,
+    AIProvider? provider,
     String? selectedModel,
-    String? fallbackModel,
+    Object? fallbackModel = _unset,
+    Object? modelLoadError = _unset,
+    List<AIModelInfo>? geminiModels,
     String? gender,
     String? activityLevel,
     List<NutritionMetricType>? homeMetricTypes,
@@ -42,8 +57,16 @@ class SettingsState {
     return SettingsState(
       isLoading: isLoading ?? this.isLoading,
       isSyncing: isSyncing ?? this.isSyncing,
+      isLoadingModels: isLoadingModels ?? this.isLoadingModels,
+      provider: provider ?? this.provider,
       selectedModel: selectedModel ?? this.selectedModel,
-      fallbackModel: fallbackModel ?? this.fallbackModel,
+      fallbackModel: identical(fallbackModel, _unset)
+          ? this.fallbackModel
+          : fallbackModel as String?,
+      modelLoadError: identical(modelLoadError, _unset)
+          ? this.modelLoadError
+          : modelLoadError as String?,
+      geminiModels: geminiModels ?? this.geminiModels,
       gender: gender ?? this.gender,
       activityLevel: activityLevel ?? this.activityLevel,
       homeMetricTypes: homeMetricTypes ?? this.homeMetricTypes,
@@ -64,24 +87,27 @@ class SettingsController extends _$SettingsController {
     required void Function(UserProfile profile) onProfileLoaded,
   }) async {
     final settings = ref.read(settingsServiceProvider);
+    final provider = await settings.getAIProvider();
+    state = state.copyWith(
+      provider: provider,
+      selectedModel: provider.defaultModel,
+      fallbackModel: null,
+    );
 
-    final key = await ref.read(apiKeyProvider.future);
+    final key = await settings.getApiKeyForProvider(provider);
     if (key != null) {
       onKeyLoaded(key);
     }
 
-    final model = await settings.getAIModel();
-    final isKnownModel = availableModels.any((m) => m.id == model);
-
-    if (isKnownModel) {
-      state = state.copyWith(selectedModel: model);
-    } else {
-      state = state.copyWith(selectedModel: 'custom');
-      onCustomModelLoaded(model);
+    if (provider == AIProvider.gemini && key?.trim().isNotEmpty == true) {
+      await refreshGeminiModels(apiKey: key!);
     }
 
+    final model = await settings.getAIModel();
+    _selectStoredModel(model, onCustomModelLoaded);
+
     final fallback = await settings.getFallbackModel();
-    if (fallback != null) {
+    if (fallback != null && _isKnownModel(fallback)) {
       state = state.copyWith(fallbackModel: fallback);
     }
 
@@ -96,12 +122,56 @@ class SettingsController extends _$SettingsController {
     }
   }
 
+  void updateProvider(AIProvider provider) {
+    state = state.copyWith(
+      provider: provider,
+      selectedModel: _defaultModelFor(provider),
+      fallbackModel: null,
+      modelLoadError: null,
+    );
+  }
+
   void updateModel(String modelId) {
     state = state.copyWith(selectedModel: modelId);
   }
 
   void updateFallbackModel(String? modelId) {
     state = state.copyWith(fallbackModel: modelId);
+  }
+
+  Future<void> refreshGeminiModels({required String apiKey}) async {
+    if (apiKey.trim().isEmpty) {
+      state = state.copyWith(
+        geminiModels: const [],
+        modelLoadError: null,
+        isLoadingModels: false,
+      );
+      return;
+    }
+
+    state = state.copyWith(isLoadingModels: true, modelLoadError: null);
+    try {
+      final descriptors = await AIService.listGeminiModels(apiKey: apiKey);
+      final models = descriptors.map(_geminiModelInfo).toList();
+      final nextSelectedModel = state.provider == AIProvider.gemini &&
+              !models.any((model) => model.id == state.selectedModel) &&
+              state.selectedModel != 'custom'
+          ? _defaultModelFrom(
+              models.isEmpty ? _geminiFallbackModels : models,
+            )
+          : state.selectedModel;
+
+      state = state.copyWith(
+        geminiModels: models,
+        isLoadingModels: false,
+        selectedModel: nextSelectedModel,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoadingModels: false,
+        modelLoadError: e.toString(),
+      );
+    }
   }
 
   void updateGender(String gender) {
@@ -133,13 +203,14 @@ class SettingsController extends _$SettingsController {
     state = state.copyWith(isLoading: true);
     try {
       final settings = ref.read(settingsServiceProvider);
-      await settings.saveApiKey(apiKey.trim());
+      await settings.saveAIProvider(state.provider);
+      await settings.saveApiKeyForProvider(state.provider, apiKey.trim());
 
       final modelToSave = state.selectedModel == 'custom'
           ? customModel.trim()
           : state.selectedModel;
       if (modelToSave.isNotEmpty) {
-        await settings.saveAIModel(modelToSave);
+        await settings.saveAIModelForProvider(state.provider, modelToSave);
       }
 
       await settings.saveFallbackModel(state.fallbackModel);
@@ -207,18 +278,157 @@ class SettingsController extends _$SettingsController {
     await ref.read(syncServiceProvider).signOut();
   }
 
-  final List<AIModelInfo> availableModels = const [
+  List<AIModelInfo> get availableModels {
+    return availableModelsFor(state.provider);
+  }
+
+  List<AIModelInfo> availableModelsFor(AIProvider provider) {
+    return switch (provider) {
+      AIProvider.openRouter => _openRouterModels,
+      AIProvider.gemini => state.geminiModels.isEmpty
+          ? _geminiFallbackModels
+          : [...state.geminiModels, _customGeminiModel],
+    };
+  }
+
+  int calculateDailyCalories({
+    required int age,
+    required double weight,
+    required double height,
+    required String gender,
+    required String activityLevel,
+  }) {
+    return CalorieCalculator.calculateDailyCalories(
+      weightKg: weight,
+      heightCm: height,
+      age: age,
+      gender: gender,
+      activityLevel: activityLevel,
+    );
+  }
+
+  void _selectStoredModel(
+    String model,
+    void Function(String modelId) onCustomModelLoaded,
+  ) {
+    if (_isKnownModel(model)) {
+      state = state.copyWith(selectedModel: model);
+      return;
+    }
+
+    state = state.copyWith(selectedModel: 'custom');
+    onCustomModelLoaded(model);
+  }
+
+  bool _isKnownModel(String model) {
+    return availableModels.any((availableModel) => availableModel.id == model);
+  }
+
+  String _defaultModelFor(AIProvider provider) {
+    final models = availableModelsFor(provider);
+    if (models.any((model) => model.id == provider.defaultModel)) {
+      return provider.defaultModel;
+    }
+
+    return _defaultModelFrom(models);
+  }
+
+  String _defaultModelFrom(List<AIModelInfo> models) {
+    return models
+        .firstWhere((model) => model.id != 'custom', orElse: () => models.first)
+        .id;
+  }
+
+  AIModelInfo _geminiModelInfo(GeminiModelDescriptor descriptor) {
+    return AIModelInfo(
+      id: descriptor.id,
+      name: descriptor.name,
+      price: 'Gemini API',
+      description: descriptor.description.isNotEmpty
+          ? descriptor.description
+          : _tokenDescription(descriptor),
+    );
+  }
+
+  String _tokenDescription(GeminiModelDescriptor descriptor) {
+    final input = descriptor.inputTokenLimit;
+    final output = descriptor.outputTokenLimit;
+    if (input == null && output == null) return 'Available from models.list';
+    return 'Input ${_formatTokenLimit(input)} / output ${_formatTokenLimit(output)}';
+  }
+
+  String _formatTokenLimit(int? value) {
+    if (value == null) return '?';
+    if (value >= 1000000) {
+      final millions = value / 1000000;
+      return '${millions.toStringAsFixed(millions == millions.roundToDouble() ? 0 : 1)}M';
+    }
+    if (value >= 1000) {
+      final thousands = value / 1000;
+      return '${thousands.toStringAsFixed(thousands == thousands.roundToDouble() ? 0 : 1)}k';
+    }
+    return value.toString();
+  }
+
+  static const AIModelInfo _customGeminiModel = AIModelInfo(
+    id: 'custom',
+    name: 'Custom Gemini model',
+    price: 'Varies',
+    description: 'Enter any Gemini API model ID',
+  );
+
+  static const List<AIModelInfo> _geminiFallbackModels = [
+    AIModelInfo(
+      id: 'gemini-3.1-flash-lite',
+      name: 'Gemini 3.1 Flash-Lite',
+      price: 'Low',
+      description: 'Fast, cost-efficient Gemini API model',
+    ),
+    AIModelInfo(
+      id: 'gemini-3.1-flash-lite-preview',
+      name: 'Gemini 3.1 Flash-Lite Preview',
+      price: 'Low',
+      description: 'Preview Flash-Lite model from Gemini API',
+    ),
+    AIModelInfo(
+      id: 'gemini-3.1-pro-preview',
+      name: 'Gemini 3.1 Pro Preview',
+      price: 'High',
+      description: 'Best Gemini reasoning model',
+    ),
+    AIModelInfo(
+      id: 'gemini-3-flash-preview',
+      name: 'Gemini 3 Flash Preview',
+      price: 'Medium',
+      description: 'Balanced Gemini 3 speed and quality',
+    ),
+    AIModelInfo(
+      id: 'gemini-2.5-flash-lite',
+      name: 'Gemini 2.5 Flash-Lite',
+      price: 'Low',
+      description: 'Stable cost-efficient Gemini model',
+    ),
+    _customGeminiModel,
+  ];
+
+  static const List<AIModelInfo> _openRouterModels = [
+    AIModelInfo(
+      id: 'google/gemini-3.1-flash-lite',
+      name: 'Gemini 3.1 Flash-Lite',
+      price: r'~$0.002',
+      description: 'Fast, cheap Gemini via OpenRouter',
+    ),
+    AIModelInfo(
+      id: 'google/gemini-3.1-pro-preview',
+      name: 'Gemini 3.1 Pro',
+      price: r'~$0.014',
+      description: 'Best Gemini reasoning via OpenRouter',
+    ),
     AIModelInfo(
       id: 'google/gemini-3-flash-preview',
       name: 'Gemini 3 Flash',
-      price: r'~$0.0008',
-      description: 'Recommended, Default, Fast, Accurate',
-    ),
-    AIModelInfo(
-      id: 'google/gemini-3-pro-preview',
-      name: 'Gemini 3 Pro',
-      price: r'~$0.04',
-      description: 'Best, expensive',
+      price: r'~$0.004',
+      description: 'Balanced Gemini via OpenRouter',
     ),
     AIModelInfo(
       id: 'openai/gpt-5.2',
@@ -254,23 +464,7 @@ class SettingsController extends _$SettingsController {
       id: 'custom',
       name: 'Custom OpenRouter model',
       price: 'Varies',
-      description: 'Advanced, not recommended',
+      description: 'Enter any OpenRouter model ID',
     ),
   ];
-
-  int calculateDailyCalories({
-    required int age,
-    required double weight,
-    required double height,
-    required String gender,
-    required String activityLevel,
-  }) {
-    return CalorieCalculator.calculateDailyCalories(
-      weightKg: weight,
-      heightCm: height,
-      age: age,
-      gender: gender,
-      activityLevel: activityLevel,
-    );
-  }
 }

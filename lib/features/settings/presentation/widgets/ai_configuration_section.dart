@@ -1,37 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/features/settings/domain/ai_model_info.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AIConfigurationSection extends StatelessWidget {
   const AIConfigurationSection({
     super.key,
+    required this.provider,
     required this.apiKeyController,
     required this.customModelController,
     required this.selectedModel,
     this.fallbackModel,
     required this.availableModels,
+    required this.isLoadingModels,
+    this.modelLoadError,
+    required this.onProviderChanged,
     required this.onModelChanged,
     required this.onFallbackModelChanged,
+    required this.onRefreshModels,
   });
+  final AIProvider provider;
   final TextEditingController apiKeyController;
   final TextEditingController customModelController;
   final String selectedModel;
   final String? fallbackModel;
   final List<AIModelInfo> availableModels;
+  final bool isLoadingModels;
+  final String? modelLoadError;
+  final ValueChanged<AIProvider?> onProviderChanged;
   final ValueChanged<String?> onModelChanged;
   final ValueChanged<String?> onFallbackModelChanged;
+  final VoidCallback onRefreshModels;
 
   Future<void> _openApiKeysPage(BuildContext context) async {
-    final url = Uri.parse('https://openrouter.ai/settings/keys');
+    final url = Uri.parse(provider.apiKeyUrl);
     final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not open browser. Visit openrouter.ai/settings/keys',
-          ),
-        ),
+        SnackBar(content: Text(provider.apiKeyHelp)),
       );
     }
   }
@@ -46,14 +53,18 @@ class AIConfigurationSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                model.name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+              Expanded(
+                child: Text(
+                  model.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const Gap(8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
@@ -78,6 +89,25 @@ class AIConfigurationSection extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildProviderDropdown() {
+    return DropdownButtonFormField<AIProvider>(
+      value: provider,
+      decoration: const InputDecoration(
+        labelText: 'AI Provider',
+        border: OutlineInputBorder(),
+      ),
+      items: AIProvider.values
+          .map(
+            (provider) => DropdownMenuItem<AIProvider>(
+              value: provider,
+              child: Text(provider.label),
+            ),
+          )
+          .toList(),
+      onChanged: onProviderChanged,
     );
   }
 
@@ -119,6 +149,8 @@ class AIConfigurationSection extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Text(
             model.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontWeight: FontWeight.normal),
           ),
         ),
@@ -170,16 +202,18 @@ class AIConfigurationSection extends StatelessWidget {
         ),
         const Gap(16),
         const Text(
-          'This app uses OpenRouter to analyze your food. You need to provide your own API Key.',
+          'Choose OpenRouter or the native Gemini API to analyze your food. You need to provide your own API key.',
           style: TextStyle(color: Colors.grey),
         ),
+        const Gap(16),
+        _buildProviderDropdown(),
         const Gap(8),
         TextField(
           controller: apiKeyController,
-          decoration: const InputDecoration(
-            labelText: 'OpenRouter API Key',
-            border: OutlineInputBorder(),
-            hintText: 'sk-or-...',
+          decoration: InputDecoration(
+            labelText: provider.apiKeyLabel,
+            border: const OutlineInputBorder(),
+            hintText: provider.apiKeyHint,
           ),
           obscureText: true,
         ),
@@ -194,6 +228,35 @@ class AIConfigurationSection extends StatelessWidget {
             ),
           ),
         ] else ...[
+          if (provider == AIProvider.gemini) ...[
+            const Gap(8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: isLoadingModels ? null : onRefreshModels,
+                icon: isLoadingModels
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                label: const Text('Refresh Gemini Models'),
+              ),
+            ),
+            if (modelLoadError != null) ...[
+              const Gap(8),
+              Text(
+                modelLoadError!,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
           const Gap(16),
           _buildModelDropdown(
             context: context,
@@ -205,10 +268,12 @@ class AIConfigurationSection extends StatelessWidget {
             const Gap(8),
             TextField(
               controller: customModelController,
-              decoration: const InputDecoration(
-                labelText: 'Custom Model ID (OpenRouter)',
-                border: OutlineInputBorder(),
-                hintText: 'e.g. meta-llama/llama-3-70b-instruct',
+              decoration: InputDecoration(
+                labelText: 'Custom Model ID (${provider.label})',
+                border: const OutlineInputBorder(),
+                hintText: provider == AIProvider.gemini
+                    ? 'e.g. gemini-3.1-pro-preview'
+                    : 'e.g. meta-llama/llama-3-70b-instruct',
               ),
             ),
           ],
