@@ -1,0 +1,52 @@
+name: Generate Android Signing Key (Run Once)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate_key:
+    name: Generate Keystore and Print Secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate keystore
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore nutrinutri-release.jks \
+            -storepass nutrinutri123 \
+            -keypass nutrinutri123 \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 36500 \
+            -alias nutrinutri \
+            -dname "CN=NutriNutri, OU=App, O=NutriNutri, L=Unknown, S=Unknown, C=US"
+
+      - name: Print secrets to job summary
+        run: |
+          B64=$(base64 -w 0 nutrinutri-release.jks)
+          echo "## Android Signing Secrets" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Go to **Settings → Secrets and variables → Actions** and add these 4 secrets:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ANDROID_KEYSTORE_BASE64" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "$B64" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ANDROID_STORE_PASSWORD" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "nutrinutri123" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ANDROID_KEY_PASSWORD" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "nutrinutri123" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ANDROID_KEY_ALIAS" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "nutrinutri" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **After adding all 4 secrets, delete this workflow file from the repo.**" >> $GITHUB_STEP_SUMMARY
