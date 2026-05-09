@@ -7,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/providers.dart';
+import 'package:nutrinutri/core/services/data_portability_service.dart';
 import 'package:nutrinutri/core/services/google_user_info.dart';
 import 'package:nutrinutri/core/utils/platform_helper.dart';
 import 'package:nutrinutri/core/widgets/responsive_center.dart';
+import 'package:nutrinutri/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:nutrinutri/features/settings/presentation/managers/settings_form_manager.dart';
 import 'package:nutrinutri/features/settings/presentation/settings_controller.dart';
 import 'package:nutrinutri/features/settings/presentation/widgets/ai_configuration_section.dart';
@@ -25,6 +27,8 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   late final SettingsFormManager _formManager;
+  bool _isExportingData = false;
+  bool _isImportingData = false;
 
   @override
   void initState() {
@@ -146,6 +150,81 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _formManager.recalculateCalories();
   }
 
+  DataPortabilityService _dataPortabilityService() {
+    return DataPortabilityService(
+      ref.read(appDatabaseProvider),
+      ref.read(deviceIdServiceProvider),
+      ref.read(syncServiceProvider),
+    );
+  }
+
+  Future<void> _exportData() async {
+    if (_isExportingData) return;
+    setState(() => _isExportingData = true);
+    try {
+      final result = await _dataPortabilityService().exportCsv();
+      if (!mounted) return;
+
+      final message = result == null
+          ? 'Export cancelled'
+          : 'Exported ${result.entryCount} entries to CSV';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingData = false);
+      }
+    }
+  }
+
+  Future<void> _importData() async {
+    if (_isImportingData) return;
+    setState(() => _isImportingData = true);
+    try {
+      final result = await _dataPortabilityService().importCsv();
+      if (!mounted) return;
+
+      if (result == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Import cancelled')));
+        return;
+      }
+
+      for (final date in result.affectedDates) {
+        ref.invalidate(dayEntriesProvider(date));
+        ref.invalidate(dailySummaryProvider(date));
+        ref.invalidate(dailySummaryDataProvider(date));
+      }
+
+      final skippedText = result.skippedRows == 0
+          ? ''
+          : ' (${result.skippedRows} skipped)';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported ${result.importedEntries} entries$skippedText',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isImportingData = false);
+      }
+    }
+  }
+
   Future<void> _openLicenses() async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       const platform = MethodChannel('sk.popelis.nutrinutri/licenses');
@@ -186,9 +265,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       onActivityLevelChanged: (value) =>
           _onActivityLevelChanged(controller, value),
       onSync: () => unawaited(_handleSync()),
+      onExportData: () => unawaited(_exportData()),
+      onImportData: () => unawaited(_importData()),
       onOpenLicenses: () => unawaited(_openLicenses()),
       onRefreshGeminiModels: () =>
           unawaited(_formManager.refreshGeminiModels()),
+      isExportingData: _isExportingData,
+      isImportingData: _isImportingData,
     );
 
     return PopScope(
@@ -284,8 +367,12 @@ class _SettingsSections extends StatelessWidget {
     required this.onGenderChanged,
     required this.onActivityLevelChanged,
     required this.onSync,
+    required this.onExportData,
+    required this.onImportData,
     required this.onOpenLicenses,
     required this.onRefreshGeminiModels,
+    required this.isExportingData,
+    required this.isImportingData,
   });
 
   final SettingsState state;
@@ -298,8 +385,12 @@ class _SettingsSections extends StatelessWidget {
   final ValueChanged<String?> onGenderChanged;
   final ValueChanged<String?> onActivityLevelChanged;
   final VoidCallback onSync;
+  final VoidCallback onExportData;
+  final VoidCallback onImportData;
   final VoidCallback onOpenLicenses;
   final VoidCallback onRefreshGeminiModels;
+  final bool isExportingData;
+  final bool isImportingData;
 
   @override
   Widget build(BuildContext context) {
@@ -341,6 +432,13 @@ class _SettingsSections extends StatelessWidget {
           onActivityLevelChanged: onActivityLevelChanged,
         ),
         const _SettingsSectionBreak(),
+        _DataSection(
+          isExporting: isExportingData,
+          isImporting: isImportingData,
+          onExport: onExportData,
+          onImport: onImportData,
+        ),
+        const _SettingsSectionBreak(),
         _AboutSection(onOpenLicenses: onOpenLicenses),
       ],
     );
@@ -353,6 +451,58 @@ class _SettingsSectionBreak extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Column(children: [Gap(32), Divider(), Gap(16)]);
+  }
+}
+
+class _DataSection extends StatelessWidget {
+  const _DataSection({
+    required this.isExporting,
+    required this.isImporting,
+    required this.onExport,
+    required this.onImport,
+  });
+
+  final bool isExporting;
+  final bool isImporting;
+  final VoidCallback onExport;
+  final VoidCallback onImport;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('Data', style: Theme.of(context).textTheme.titleMedium),
+        ),
+        const Gap(8),
+        ListTile(
+          title: const Text('Export CSV'),
+          subtitle: const Text('Save a portable backup of diary entries'),
+          leading: const Icon(Icons.download),
+          trailing: isExporting
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: isExporting || isImporting ? null : onExport,
+        ),
+        ListTile(
+          title: const Text('Import CSV'),
+          subtitle: const Text('Add or update entries from a CSV backup'),
+          leading: const Icon(Icons.upload_file),
+          trailing: isImporting
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: isExporting || isImporting ? null : onImport,
+        ),
+      ],
+    );
   }
 }
 

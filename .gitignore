@@ -46,6 +46,9 @@ app.*.map.json
 /android/app/release
 
 # Secrets
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
 google-services.json
 GoogleService-Info.plist
 wes_client_secret.json
