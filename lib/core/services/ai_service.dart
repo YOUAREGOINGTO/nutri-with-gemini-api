@@ -74,12 +74,17 @@ class AIService {
 
     try {
       do {
+        final queryParameters = <String, String>{
+          'key': apiKey.trim(),
+          'pageSize': '1000',
+        };
+        final token = pageToken ?? '';
+        if (token.isNotEmpty) {
+          queryParameters['pageToken'] = token;
+        }
+
         final uri = Uri.parse('$_geminiBaseUrl/models').replace(
-          queryParameters: {
-            'key': apiKey.trim(),
-            'pageSize': '1000',
-            if (pageToken case final token?) 'pageToken': token,
-          },
+          queryParameters: queryParameters,
         );
         final response = await client.get(uri);
 
@@ -102,7 +107,7 @@ class AIService {
         }
 
         pageToken = data['nextPageToken']?.toString();
-      } while (pageToken != null && pageToken.isNotEmpty);
+      } while ((pageToken ?? '').isNotEmpty);
     } finally {
       client.close();
     }
