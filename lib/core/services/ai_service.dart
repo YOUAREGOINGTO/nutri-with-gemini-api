@@ -175,8 +175,13 @@ Rules:
 - Do not assume the user is logging a full meal or full plate.
 - If the user says half of this, one piece, one spoon, only this part, or similar, estimate only that logged amount.
 - Metrics must be the final total for what the user is logging.
+- Before assigning metrics, identify the likely food/drink, consumed quantity, preparation method, and calorie-bearing additions.
+- Account for visible or strongly implied ingredients such as cooking oil, ghee, butter, sauces, dressings, gravy, added sugar, cream, cheese, nuts, batter, breading, and toppings.
+- If oil, ghee, sauces, or ingredients are uncertain, use a normal moderate assumption for that food and cuisine when the dish clearly implies them. Do not invent sides, toppings, or ingredients that are not visible, named, or typical for the identified item.
+- User text overrides assumptions. If the user says no oil, no sugar, plain, boiled, steamed, baked, or gives an ingredient/quantity correction, follow that.
+- In the final JSON, write reasoning before metrics as shown in the schema. The metric values must be consistent with the quantity and ingredient assumptions summarized in reasoning.
 - estimated_quantity should briefly summarize the quantity used.
-- reasoning should be a useful user-facing explanation in 2-4 sentences. Describe what the input appears to be, how the quantity was interpreted, how multiple images or unrelated images were handled, and why the calorie/macro estimate or zero values make sense.
+- reasoning should be concise but complete user-facing calculation basis, not hidden chain-of-thought. Include only needed details: what the input appears to be, how the logged quantity was interpreted, which visible or typical ingredients/cooking fats affected the estimate, how multiple images or unrelated images were handled, and why the calorie/macro estimate or zero values make sense.
 - If the input is not food or drink, use the same schema with every metric set to 0.
 - For non-food inputs, food_name should describe the item, and reasoning should explain why calories and macros are 0.
 - Do not invent calories for blood tests, documents, medicine labels, random labels, packaging labels without a consumed portion, or other non-food/non-drink inputs.
