@@ -94,7 +94,7 @@ class AIConfigurationSection extends StatelessWidget {
 
   Widget _buildProviderDropdown() {
     return DropdownButtonFormField<AIProvider>(
-      value: provider,
+      initialValue: provider,
       decoration: const InputDecoration(
         labelText: 'AI Provider',
         border: OutlineInputBorder(),

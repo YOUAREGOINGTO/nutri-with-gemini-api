@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:drift/drift.dart';
@@ -652,12 +651,14 @@ class DataPortabilityService {
 
       final file = _archiveFile(archive, zipPath);
       if (file == null || !file.isFile) continue;
+      final bytes = file.readBytes();
+      if (bytes == null) continue;
 
       final localPath = await _restoreBackupImage(
         entryId: entryId,
         index: images.length + 1,
         zipPath: zipPath,
-        bytes: file.readBytes(),
+        bytes: bytes,
       );
       images.add(
         EntryImagesCompanion.insert(
@@ -734,7 +735,9 @@ class DataPortabilityService {
   Object? _decodeArchiveJson(Archive archive, String path) {
     final file = _archiveFile(archive, path);
     if (file == null || !file.isFile) return null;
-    return jsonDecode(utf8.decode(file.readBytes(), allowMalformed: true));
+    final bytes = file.readBytes();
+    if (bytes == null) return null;
+    return jsonDecode(utf8.decode(bytes, allowMalformed: true));
   }
 
   ArchiveFile? _archiveFile(Archive archive, String path) {

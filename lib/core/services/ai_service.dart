@@ -78,7 +78,7 @@ class AIService {
           queryParameters: {
             'key': apiKey.trim(),
             'pageSize': '1000',
-            if (pageToken != null) 'pageToken': pageToken,
+            if (pageToken case final token?) 'pageToken': token,
           },
         );
         final response = await client.get(uri);
