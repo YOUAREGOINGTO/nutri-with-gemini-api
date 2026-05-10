@@ -29,6 +29,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late final SettingsFormManager _formManager;
   bool _isExportingData = false;
   bool _isImportingData = false;
+  bool _isExportingBackup = false;
+  bool _isImportingBackup = false;
 
   @override
   void initState() {
@@ -183,6 +185,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  Future<void> _exportBackup() async {
+    if (_isExportingBackup) return;
+    setState(() => _isExportingBackup = true);
+    try {
+      final result = await _dataPortabilityService().exportBackupZip();
+      if (!mounted) return;
+
+      final message = result == null
+          ? 'Backup export cancelled'
+          : 'Exported ${result.entryCount} entries to ZIP backup';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Backup export failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingBackup = false);
+      }
+    }
+  }
+
   Future<void> _importData() async {
     if (_isImportingData) return;
     setState(() => _isImportingData = true);
@@ -197,11 +224,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         return;
       }
 
-      for (final date in result.affectedDates) {
-        ref.invalidate(dayEntriesProvider(date));
-        ref.invalidate(dailySummaryProvider(date));
-        ref.invalidate(dailySummaryDataProvider(date));
-      }
+      _invalidateImportedDates(result.affectedDates);
 
       final skippedText = result.skippedRows == 0
           ? ''
@@ -222,6 +245,52 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (mounted) {
         setState(() => _isImportingData = false);
       }
+    }
+  }
+
+  Future<void> _importBackup() async {
+    if (_isImportingBackup) return;
+    setState(() => _isImportingBackup = true);
+    try {
+      final result = await _dataPortabilityService().importBackupZip();
+      if (!mounted) return;
+
+      if (result == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Backup import cancelled')));
+        return;
+      }
+
+      _invalidateImportedDates(result.affectedDates);
+
+      final skippedText = result.skippedRows == 0
+          ? ''
+          : ' (${result.skippedRows} skipped)';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Restored ${result.importedEntries} entries$skippedText',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Backup import failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isImportingBackup = false);
+      }
+    }
+  }
+
+  void _invalidateImportedDates(Set<DateTime> dates) {
+    for (final date in dates) {
+      ref.invalidate(dayEntriesProvider(date));
+      ref.invalidate(dailySummaryProvider(date));
+      ref.invalidate(dailySummaryDataProvider(date));
     }
   }
 
@@ -267,11 +336,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       onSync: () => unawaited(_handleSync()),
       onExportData: () => unawaited(_exportData()),
       onImportData: () => unawaited(_importData()),
+      onExportBackup: () => unawaited(_exportBackup()),
+      onImportBackup: () => unawaited(_importBackup()),
       onOpenLicenses: () => unawaited(_openLicenses()),
       onRefreshGeminiModels: () =>
           unawaited(_formManager.refreshGeminiModels()),
       isExportingData: _isExportingData,
       isImportingData: _isImportingData,
+      isExportingBackup: _isExportingBackup,
+      isImportingBackup: _isImportingBackup,
     );
 
     return PopScope(
@@ -369,10 +442,14 @@ class _SettingsSections extends StatelessWidget {
     required this.onSync,
     required this.onExportData,
     required this.onImportData,
+    required this.onExportBackup,
+    required this.onImportBackup,
     required this.onOpenLicenses,
     required this.onRefreshGeminiModels,
     required this.isExportingData,
     required this.isImportingData,
+    required this.isExportingBackup,
+    required this.isImportingBackup,
   });
 
   final SettingsState state;
@@ -387,10 +464,14 @@ class _SettingsSections extends StatelessWidget {
   final VoidCallback onSync;
   final VoidCallback onExportData;
   final VoidCallback onImportData;
+  final VoidCallback onExportBackup;
+  final VoidCallback onImportBackup;
   final VoidCallback onOpenLicenses;
   final VoidCallback onRefreshGeminiModels;
   final bool isExportingData;
   final bool isImportingData;
+  final bool isExportingBackup;
+  final bool isImportingBackup;
 
   @override
   Widget build(BuildContext context) {
@@ -435,8 +516,12 @@ class _SettingsSections extends StatelessWidget {
         _DataSection(
           isExporting: isExportingData,
           isImporting: isImportingData,
+          isExportingBackup: isExportingBackup,
+          isImportingBackup: isImportingBackup,
           onExport: onExportData,
           onImport: onImportData,
+          onExportBackup: onExportBackup,
+          onImportBackup: onImportBackup,
         ),
         const _SettingsSectionBreak(),
         _AboutSection(onOpenLicenses: onOpenLicenses),
@@ -458,14 +543,22 @@ class _DataSection extends StatelessWidget {
   const _DataSection({
     required this.isExporting,
     required this.isImporting,
+    required this.isExportingBackup,
+    required this.isImportingBackup,
     required this.onExport,
     required this.onImport,
+    required this.onExportBackup,
+    required this.onImportBackup,
   });
 
   final bool isExporting;
   final bool isImporting;
+  final bool isExportingBackup;
+  final bool isImportingBackup;
   final VoidCallback onExport;
   final VoidCallback onImport;
+  final VoidCallback onExportBackup;
+  final VoidCallback onImportBackup;
 
   @override
   Widget build(BuildContext context) {
@@ -478,6 +571,34 @@ class _DataSection extends StatelessWidget {
         ),
         const Gap(8),
         ListTile(
+          title: const Text('Export ZIP Backup'),
+          subtitle: const Text('Save entries, images, and AI chat history'),
+          leading: const Icon(Icons.archive_outlined),
+          trailing: isExportingBackup
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
+              ? null
+              : onExportBackup,
+        ),
+        ListTile(
+          title: const Text('Import ZIP Backup'),
+          subtitle: const Text('Restore entries without removing existing data'),
+          leading: const Icon(Icons.unarchive_outlined),
+          trailing: isImportingBackup
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
+              ? null
+              : onImportBackup,
+        ),
+        ListTile(
           title: const Text('Export CSV'),
           subtitle: const Text('Save a portable backup of diary entries'),
           leading: const Icon(Icons.download),
@@ -487,7 +608,9 @@ class _DataSection extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: isExporting || isImporting ? null : onExport,
+          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
+              ? null
+              : onExport,
         ),
         ListTile(
           title: const Text('Import CSV'),
@@ -499,7 +622,9 @@ class _DataSection extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: isExporting || isImporting ? null : onImport,
+          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
+              ? null
+              : onImport,
         ),
       ],
     );

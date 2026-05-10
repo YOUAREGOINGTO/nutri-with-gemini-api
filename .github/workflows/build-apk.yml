@@ -23,6 +23,23 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Format
+        run: dart format .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: |
+          if [ -d test ] && find test -name "*_test.dart" -print -quit | grep -q .; then
+            flutter test
+          else
+            echo "No Flutter tests found."
+          fi
+
       - name: Create release signing files
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

@@ -6,12 +6,15 @@ import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/services/device_id_service.dart';
 import 'package:nutrinutri/core/services/sync_service.dart';
 import 'package:nutrinutri/features/diary/domain/diary_entry.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 class DiaryService {
   DiaryService(this._db, this._deviceId, this._syncService);
   final AppDatabase _db;
   final DeviceIdService _deviceId;
   final SyncService _syncService;
+  static const _uuid = Uuid();
 
   ({int startMs, int endMsInclusive}) _dayBounds(DateTime date) {
     final start = DateTime(date.year, date.month, date.day);
@@ -39,6 +42,7 @@ class DiaryService {
       icon: Value(entry.icon),
       status: Value(entry.status.index),
       description: Value(entry.description),
+      reasoning: Value(entry.reasoning),
       durationMinutes: Value(entry.durationMinutes),
       updatedAt: Value(now),
       updatedBy: Value(deviceId),
@@ -83,6 +87,26 @@ class DiaryService {
     return metricsByEntryId;
   }
 
+  Future<Map<String, List<String>>> _loadImagePathsByEntryId(
+    List<String> entryIds,
+  ) async {
+    if (entryIds.isEmpty) return const {};
+
+    final rows =
+        await (_db.select(_db.entryImages)
+              ..where((t) => t.entryId.isIn(entryIds))
+              ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+            .get();
+
+    final imagesByEntryId = <String, List<String>>{};
+    for (final row in rows) {
+      imagesByEntryId
+          .putIfAbsent(row.entryId, () => <String>[])
+          .add(row.localPath);
+    }
+    return imagesByEntryId;
+  }
+
   Future<void> _replaceMetrics(
     String entryId,
     Map<NutritionMetricType, double> metrics,
@@ -120,6 +144,44 @@ class DiaryService {
     });
   }
 
+  Future<void> _replaceImages(
+    String entryId,
+    List<String> imagePaths, {
+    required int now,
+  }) async {
+    final uniquePaths = <String>[];
+    final seen = <String>{};
+    for (final path in imagePaths) {
+      final trimmed = path.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) continue;
+      uniquePaths.add(trimmed);
+    }
+
+    await (_db.delete(
+      _db.entryImages,
+    )..where((t) => t.entryId.equals(entryId))).go();
+
+    if (uniquePaths.isEmpty) return;
+
+    final companions = <EntryImagesCompanion>[];
+    for (var i = 0; i < uniquePaths.length; i++) {
+      final path = uniquePaths[i];
+      companions.add(
+        EntryImagesCompanion.insert(
+          id: '$entryId-image-${i + 1}',
+          entryId: entryId,
+          localPath: path,
+          originalName: Value(p.basename(path)),
+          createdAt: now + i,
+        ),
+      );
+    }
+
+    await _db.batch((batch) {
+      batch.insertAll(_db.entryImages, companions);
+    });
+  }
+
   Future<List<DiaryEntry>> getEntriesForDate(DateTime date) async {
     final bounds = _dayBounds(date);
 
@@ -139,12 +201,16 @@ class DiaryService {
     final metricsByEntryId = await _loadMetricsByEntryId(
       rows.map((row) => row.id).toList(growable: false),
     );
+    final imagesByEntryId = await _loadImagePathsByEntryId(
+      rows.map((row) => row.id).toList(growable: false),
+    );
 
     return rows
         .map(
           (row) => _toDomain(
             row,
             metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{},
+            imagePaths: imagesByEntryId[row.id],
           ),
         )
         .toList(growable: false);
@@ -167,6 +233,7 @@ class DiaryService {
             mode: InsertMode.insertOrReplace,
           );
       await _replaceMetrics(entry.id, entry.metrics);
+      await _replaceImages(entry.id, entry.imagePaths, now: now);
     });
     unawaited(_syncService.requestSync());
   }
@@ -182,6 +249,7 @@ class DiaryService {
         _entryCompanion(entry, deviceId: deviceId, now: now, includeId: false),
       );
       await _replaceMetrics(entry.id, entry.metrics);
+      await _replaceImages(entry.id, entry.imagePaths, now: now);
     });
     unawaited(_syncService.requestSync());
   }
@@ -328,7 +396,9 @@ LIMIT 200
   DiaryEntry _toDomain(
     DiaryEntryRow row,
     Map<NutritionMetricType, double> metrics,
-  ) {
+    {
+    List<String>? imagePaths,
+  }) {
     return DiaryEntry(
       id: row.id,
       name: row.name,
@@ -336,10 +406,57 @@ LIMIT 200
       metrics: metrics,
       timestamp: DateTime.fromMillisecondsSinceEpoch(row.timestamp),
       imagePath: row.imagePath,
+      imagePaths: imagePaths,
       icon: row.icon,
       status: FoodEntryStatus.values[row.status],
       description: row.description,
+      reasoning: row.reasoning,
       durationMinutes: row.durationMinutes,
+    );
+  }
+
+  Future<List<AiChatMessage>> getChatMessages(String entryId) async {
+    final rows =
+        await (_db.select(_db.aiChats)
+              ..where((t) => t.entryId.equals(entryId))
+              ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+            .get();
+
+    return rows.map(_chatToDomain).toList(growable: false);
+  }
+
+  Future<void> addChatMessage({
+    required String entryId,
+    required String role,
+    required String content,
+    String? metadataJson,
+    DateTime? createdAt,
+  }) async {
+    final now = createdAt ?? DateTime.now();
+    await _db
+        .into(_db.aiChats)
+        .insert(
+          AiChatsCompanion.insert(
+            id: _uuid.v4(),
+            entryId: entryId,
+            role: role,
+            content: content,
+            createdAt: now.millisecondsSinceEpoch,
+            metadataJson: Value(metadataJson),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+    unawaited(_syncService.requestSync());
+  }
+
+  AiChatMessage _chatToDomain(AiChatRow row) {
+    return AiChatMessage(
+      id: row.id,
+      entryId: row.entryId,
+      role: row.role,
+      content: row.content,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAt),
+      metadataJson: row.metadataJson,
     );
   }
 

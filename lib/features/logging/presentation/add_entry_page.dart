@@ -107,6 +107,33 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     }
   }
 
+  Future<void> _applyAiCorrection() async {
+    final entry = widget.existingEntry;
+    if (entry == null) return;
+    if (_formManager.correctionController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Describe the correction first')),
+      );
+      return;
+    }
+
+    try {
+      await _formManager.applyAiCorrection(entry);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Entry updated with AI')),
+        );
+        context.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI correction failed: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _pickDate() async {
     final current = ref.read(addEntryControllerProvider).selectedDate;
     final pickedDate = await showDatePicker(
@@ -157,11 +184,14 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                 AIEntryWizard(
                   isExercise: isExercise,
                   descriptionController: _formManager.descriptionController,
-                  image: state.image,
+                  images: state.images,
                   canUseCamera: _canUseCamera,
                   onPickImage: (source) => ref
                       .read(addEntryControllerProvider.notifier)
                       .pickImage(source),
+                  onRemoveImage: (index) => ref
+                      .read(addEntryControllerProvider.notifier)
+                      .removeImageAt(index),
                   onPromptSearch: (q) => ref
                       .read(addEntryControllerProvider.notifier)
                       .searchFood(q),
@@ -182,7 +212,9 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   isExercise: isExercise,
                   nameController: _formManager.nameController,
                   metricControllers: _formManager.metricControllers,
+                  correctionController: _formManager.correctionController,
                   durationController: _formManager.durationController,
+                  reasoning: widget.existingEntry?.reasoning,
                   selectedIcon: state.selectedIcon,
                   selectedDate: state.selectedDate,
                   selectedTime: state.selectedTime,
@@ -199,6 +231,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   onPickDate: _pickDate,
                   onPickTime: _pickTime,
                   onSave: _saveEntry,
+                  onApplyAiCorrection:
+                      isEditing && !isExercise ? _applyAiCorrection : null,
                   onDeleteConfirmed: () async {
                     try {
                       await _formManager.deleteEntry(widget.existingEntry!);

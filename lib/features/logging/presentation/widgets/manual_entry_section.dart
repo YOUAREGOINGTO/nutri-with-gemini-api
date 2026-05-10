@@ -11,7 +11,9 @@ class ManualEntrySection extends StatelessWidget {
     required this.isExercise,
     required this.nameController,
     required this.metricControllers,
+    this.correctionController,
     this.durationController,
+    this.reasoning,
     required this.selectedIcon,
     required this.selectedDate,
     required this.selectedTime,
@@ -20,13 +22,16 @@ class ManualEntrySection extends StatelessWidget {
     required this.onPickDate,
     required this.onPickTime,
     required this.onSave,
+    this.onApplyAiCorrection,
     required this.onDeleteConfirmed,
   });
   final bool isEditing;
   final bool isExercise;
   final TextEditingController nameController;
   final Map<NutritionMetricType, TextEditingController> metricControllers;
+  final TextEditingController? correctionController;
   final TextEditingController? durationController;
+  final String? reasoning;
   final String selectedIcon;
   final DateTime selectedDate;
   final TimeOfDay selectedTime;
@@ -35,6 +40,7 @@ class ManualEntrySection extends StatelessWidget {
   final VoidCallback onPickDate;
   final VoidCallback onPickTime;
   final Future<void> Function() onSave;
+  final Future<void> Function()? onApplyAiCorrection;
   final Future<void> Function() onDeleteConfirmed;
 
   @override
@@ -62,6 +68,37 @@ class ManualEntrySection extends StatelessWidget {
           onPickTime: onPickTime,
           isExercise: isExercise,
         ),
+        if (!isExercise && reasoning?.trim().isNotEmpty == true) ...[
+          const Gap(16),
+          Text(
+            'AI reasoning',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const Gap(8),
+          Text(reasoning!.trim()),
+        ],
+        if (!isExercise &&
+            isEditing &&
+            correctionController != null &&
+            onApplyAiCorrection != null) ...[
+          const Gap(24),
+          TextField(
+            controller: correctionController,
+            decoration: const InputDecoration(
+              labelText: 'Correct with AI',
+              hintText: 'e.g. Actually it was 3 rotis, not 2',
+              border: OutlineInputBorder(),
+            ),
+            minLines: 2,
+            maxLines: 4,
+          ),
+          const Gap(12),
+          FilledButton.icon(
+            onPressed: onApplyAiCorrection,
+            icon: const Icon(Icons.auto_fix_high),
+            label: const Text('Apply AI Correction'),
+          ),
+        ],
         const Gap(24),
         EntryActionButtons(
           isEditing: isEditing,

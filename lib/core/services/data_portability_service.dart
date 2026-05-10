@@ -1,15 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:drift/drift.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mime/mime.dart';
 import 'package:nutrinutri/core/db/app_database.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/services/device_id_service.dart';
 import 'package:nutrinutri/core/services/sync_service.dart';
 import 'package:nutrinutri/features/diary/domain/diary_entry.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 class DataPortabilityService {
@@ -20,6 +25,8 @@ class DataPortabilityService {
   final SyncService _syncService;
 
   static const _uuid = Uuid();
+  static const _backupVersion = 1;
+  static const _appVersion = '0.1.1+2';
   static const _baseHeaders = [
     'id',
     'timestamp',
@@ -28,6 +35,7 @@ class DataPortabilityService {
     'type',
     'name',
     'description',
+    'reasoning',
     'duration_minutes',
     'icon',
   ];
@@ -54,6 +62,122 @@ class DataPortabilityService {
       type: FileType.custom,
       allowedExtensions: const ['csv'],
       bytes: Uint8List.fromList(utf8.encode(csv)),
+    );
+
+    if (savedPath == null && !kIsWeb) {
+      return null;
+    }
+
+    return DataExportResult(entryCount: rows.length, path: savedPath);
+  }
+
+  Future<DataExportResult?> exportBackupZip() async {
+    final rows =
+        await (_db.select(_db.diaryEntries)
+              ..where((t) => t.deletedAt.isNull())
+              ..orderBy([
+                (t) => OrderingTerm.asc(t.timestamp),
+                (t) => OrderingTerm.asc(t.name),
+              ]))
+            .get();
+
+    final entryIds = rows.map((row) => row.id).toList(growable: false);
+    final metricsByEntryId = await _loadMetricsByEntryId(entryIds);
+    final imageRowsByEntryId = await _loadImagesByEntryId(entryIds);
+    final chatRowsByEntryId = await _loadChatsByEntryId(entryIds);
+
+    final archive = Archive();
+    final manifestEntries = <Map<String, Object?>>[];
+    final backupEntries = <Map<String, Object?>>[];
+
+    for (final row in rows) {
+      final imageEntries = <Map<String, Object?>>[];
+      final imageZipPaths = <String>[];
+      final imageRows = imageRowsByEntryId[row.id] ?? const <EntryImageRow>[];
+
+      for (var i = 0; i < imageRows.length; i++) {
+        final imageRow = imageRows[i];
+        final file = File(imageRow.localPath);
+        if (!await file.exists()) continue;
+
+        final bytes = await file.readAsBytes();
+        final extension = _safeImageExtension(imageRow.localPath);
+        final zipPath = 'images/${row.id}/image-${i + 1}$extension';
+        archive.addFile(_archiveBytesFile(zipPath, bytes));
+        imageZipPaths.add(zipPath);
+        imageEntries.add({
+          'id': imageRow.id,
+          'entry_id': imageRow.entryId,
+          'zip_path': zipPath,
+          'original_name': imageRow.originalName ?? p.basename(imageRow.localPath),
+          'mime_type': imageRow.mimeType ?? lookupMimeType(imageRow.localPath),
+          'created_at': imageRow.createdAt,
+        });
+      }
+
+      final chats = chatRowsByEntryId[row.id] ?? const <AiChatRow>[];
+      final chatPath = chats.isEmpty ? null : 'chats/${row.id}.json';
+      if (chatPath != null) {
+        archive.addFile(
+          _archiveStringFile(
+            chatPath,
+            _prettyJson(chats.map((chat) => chat.toJson()).toList()),
+          ),
+        );
+      }
+
+      manifestEntries.add({
+        'entry_id': row.id,
+        'image_file_paths': imageZipPaths,
+        'chat_file_path': chatPath,
+      });
+
+      backupEntries.add({
+        'row': row.toJson(),
+        'metrics': (metricsByEntryId[row.id] ?? const {})
+            .entries
+            .map(
+              (entry) => {
+                'entry_id': row.id,
+                'type': entry.key.index,
+                'value': entry.value,
+              },
+            )
+            .toList(growable: false),
+        'images': imageEntries,
+        'chat_file_path': chatPath,
+      });
+    }
+
+    final createdAt = DateTime.now();
+    final manifest = {
+      'backup_version': _backupVersion,
+      'app_version': _appVersion,
+      'created_at': createdAt.toIso8601String(),
+      'entries': manifestEntries,
+    };
+
+    archive.addFile(_archiveStringFile('manifest.json', _prettyJson(manifest)));
+    archive.addFile(
+      _archiveStringFile(
+        'entries.json',
+        _prettyJson({'entries': backupEntries}),
+      ),
+    );
+    archive.addFile(
+      _archiveStringFile('entries.csv', _buildCsv(rows, metricsByEntryId)),
+    );
+
+    final zipBytes = ZipEncoder().encode(archive);
+
+    final fileName =
+        'nutrinutri-backup-${_datePart(createdAt)}-${_timePart(createdAt)}.zip';
+    final savedPath = await FilePicker.saveFile(
+      dialogTitle: 'Export NutriNutri backup',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      bytes: Uint8List.fromList(zipBytes),
     );
 
     if (savedPath == null && !kIsWeb) {
@@ -156,6 +280,7 @@ class DataPortabilityService {
                 icon: Value(entry.icon),
                 status: Value(FoodEntryStatus.synced.index),
                 description: Value(entry.description),
+                reasoning: Value(entry.reasoning),
                 durationMinutes: Value(entry.durationMinutes),
                 updatedAt: Value(now),
                 updatedBy: Value(deviceId),
@@ -186,6 +311,117 @@ class DataPortabilityService {
     );
   }
 
+  Future<DataImportResult?> importBackupZip() async {
+    final result = await FilePicker.pickFiles(
+      dialogTitle: 'Import NutriNutri backup',
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      withData: true,
+    );
+
+    if (result == null || result.files.isEmpty) {
+      return null;
+    }
+
+    final bytes = result.files.single.bytes;
+    if (bytes == null) {
+      throw const DataPortabilityException(
+        'Could not read the selected ZIP file. Try choosing a local copy.',
+      );
+    }
+
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final entriesJson = _decodeArchiveJson(archive, 'entries.json');
+    final rawEntries = entriesJson is Map ? entriesJson['entries'] : null;
+    if (rawEntries is! List) {
+      throw const DataPortabilityException(
+        'The ZIP backup is missing entries.json.',
+      );
+    }
+
+    final importedEntries = <_ImportedBackupEntry>[];
+    var skippedRows = 0;
+    for (final rawEntry in rawEntries) {
+      final parsed = await _backupEntryFromJson(archive, rawEntry);
+      if (parsed == null) {
+        skippedRows++;
+        continue;
+      }
+      importedEntries.add(parsed);
+    }
+
+    if (importedEntries.isEmpty) {
+      return DataImportResult(
+        importedEntries: 0,
+        skippedRows: skippedRows,
+        affectedDates: const {},
+      );
+    }
+
+    final deviceId = await _deviceId.getOrCreate();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final affectedDates = <DateTime>{};
+
+    await _db.transaction(() async {
+      for (final entry in importedEntries) {
+        final row = entry.row;
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+        affectedDates.add(
+          DateTime(timestamp.year, timestamp.month, timestamp.day),
+        );
+
+        final firstImagePath = entry.images.isEmpty
+            ? null
+            : entry.images.first.localPath.value;
+        await _db
+            .into(_db.diaryEntries)
+            .insert(
+              row.copyWith(
+                imagePath: Value(firstImagePath),
+                updatedAt: now,
+                updatedBy: deviceId,
+                deletedAt: const Value(null),
+              ).toCompanion(false),
+              mode: InsertMode.insertOrReplace,
+            );
+
+        await (_db.delete(
+          _db.entryMetrics,
+        )..where((t) => t.entryId.equals(row.id))).go();
+        await (_db.delete(
+          _db.entryImages,
+        )..where((t) => t.entryId.equals(row.id))).go();
+        await (_db.delete(
+          _db.aiChats,
+        )..where((t) => t.entryId.equals(row.id))).go();
+
+        if (entry.metrics.isNotEmpty) {
+          await _db.batch((batch) {
+            batch.insertAll(_db.entryMetrics, entry.metrics);
+          });
+        }
+        if (entry.images.isNotEmpty) {
+          await _db.batch((batch) {
+            batch.insertAll(_db.entryImages, entry.images);
+          });
+        }
+        if (entry.chats.isNotEmpty) {
+          await _db.batch((batch) {
+            batch.insertAll(_db.aiChats, entry.chats);
+          });
+        }
+      }
+    });
+
+    unawaited(_syncService.requestSync());
+
+    return DataImportResult(
+      importedEntries: importedEntries.length,
+      skippedRows: skippedRows,
+      affectedDates: affectedDates,
+    );
+  }
+
   Future<Map<String, Map<NutritionMetricType, double>>> _loadMetricsByEntryId(
     List<String> entryIds,
   ) async {
@@ -210,6 +446,42 @@ class DataPortabilityService {
     return metricsByEntryId;
   }
 
+  Future<Map<String, List<EntryImageRow>>> _loadImagesByEntryId(
+    List<String> entryIds,
+  ) async {
+    if (entryIds.isEmpty) return const {};
+
+    final rows =
+        await (_db.select(_db.entryImages)
+              ..where((t) => t.entryId.isIn(entryIds))
+              ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+            .get();
+
+    final imagesByEntryId = <String, List<EntryImageRow>>{};
+    for (final row in rows) {
+      imagesByEntryId.putIfAbsent(row.entryId, () => <EntryImageRow>[]).add(row);
+    }
+    return imagesByEntryId;
+  }
+
+  Future<Map<String, List<AiChatRow>>> _loadChatsByEntryId(
+    List<String> entryIds,
+  ) async {
+    if (entryIds.isEmpty) return const {};
+
+    final rows =
+        await (_db.select(_db.aiChats)
+              ..where((t) => t.entryId.isIn(entryIds))
+              ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+            .get();
+
+    final chatsByEntryId = <String, List<AiChatRow>>{};
+    for (final row in rows) {
+      chatsByEntryId.putIfAbsent(row.entryId, () => <AiChatRow>[]).add(row);
+    }
+    return chatsByEntryId;
+  }
+
   String _buildCsv(
     List<DiaryEntryRow> rows,
     Map<String, Map<NutritionMetricType, double>> metricsByEntryId,
@@ -232,6 +504,7 @@ class DataPortabilityService {
         _entryTypeName(row.type),
         row.name,
         row.description ?? '',
+        row.reasoning ?? '',
         row.durationMinutes?.toString() ?? '',
         row.icon ?? '',
         ...NutritionMetricType.values.map(
@@ -255,6 +528,7 @@ class DataPortabilityService {
     final timestamp = _parseTimestamp(row, headerIndex);
     final type = _parseEntryType(_cell(row, headerIndex, 'type'));
     final description = _blankToNull(_cell(row, headerIndex, 'description'));
+    final reasoning = _blankToNull(_cell(row, headerIndex, 'reasoning'));
     final icon = _blankToNull(_cell(row, headerIndex, 'icon'));
     final durationMinutes = _parseInt(
       _cell(row, headerIndex, 'duration_minutes'),
@@ -275,6 +549,7 @@ class DataPortabilityService {
       type: type,
       timestamp: timestamp,
       description: description,
+      reasoning: reasoning,
       durationMinutes: durationMinutes,
       icon: icon,
       metrics: metrics,
@@ -299,6 +574,225 @@ class DataPortabilityService {
           ),
         )
         .toList(growable: false);
+  }
+
+  Future<_ImportedBackupEntry?> _backupEntryFromJson(
+    Archive archive,
+    Object? raw,
+  ) async {
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+    final rowRaw = map['row'];
+    if (rowRaw is! Map) return null;
+
+    final DiaryEntryRow row;
+    try {
+      row = DiaryEntryRow.fromJson(Map<String, dynamic>.from(rowRaw));
+    } catch (_) {
+      return null;
+    }
+
+    final images = await _backupImageCompanions(
+      archive,
+      row.id,
+      map['images'],
+    );
+    final chats = _backupChatCompanions(
+      archive,
+      row.id,
+      map['chat_file_path']?.toString(),
+    );
+
+    return _ImportedBackupEntry(
+      row: row,
+      metrics: _backupMetricCompanions(row.id, map['metrics']),
+      images: images,
+      chats: chats,
+    );
+  }
+
+  List<EntryMetricsCompanion> _backupMetricCompanions(
+    String entryId,
+    Object? raw,
+  ) {
+    if (raw is! List) return const [];
+
+    final metrics = <EntryMetricsCompanion>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final type = _jsonInt(map['type']);
+      final value = _jsonDouble(map['value']);
+      if (type == null || value == null) continue;
+      if (type < 0 || type >= NutritionMetricType.values.length) continue;
+      metrics.add(
+        EntryMetricsCompanion.insert(
+          entryId: entryId,
+          type: type,
+          value: _roundMetric(value),
+        ),
+      );
+    }
+    return metrics;
+  }
+
+  Future<List<EntryImagesCompanion>> _backupImageCompanions(
+    Archive archive,
+    String entryId,
+    Object? raw,
+  ) async {
+    if (raw is! List) return const [];
+
+    final images = <EntryImagesCompanion>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final zipPath = map['zip_path']?.toString();
+      if (zipPath == null || zipPath.trim().isEmpty) continue;
+
+      final file = _archiveFile(archive, zipPath);
+      if (file == null || !file.isFile) continue;
+
+      final localPath = await _restoreBackupImage(
+        entryId: entryId,
+        index: images.length + 1,
+        zipPath: zipPath,
+        bytes: file.readBytes(),
+      );
+      images.add(
+        EntryImagesCompanion.insert(
+          id: _stringOrNull(map['id']) ?? '$entryId-image-${images.length + 1}',
+          entryId: entryId,
+          localPath: localPath,
+          originalName: Value(_stringOrNull(map['original_name'])),
+          mimeType: Value(_stringOrNull(map['mime_type'])),
+          createdAt:
+              _jsonInt(map['created_at']) ??
+              DateTime.now().millisecondsSinceEpoch + images.length,
+        ),
+      );
+    }
+    return images;
+  }
+
+  List<AiChatsCompanion> _backupChatCompanions(
+    Archive archive,
+    String entryId,
+    String? chatPath,
+  ) {
+    if (chatPath == null || chatPath.trim().isEmpty) return const [];
+
+    final raw = _decodeArchiveJson(archive, chatPath);
+    if (raw is! List) return const [];
+
+    final chats = <AiChatsCompanion>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final role = _stringOrNull(map['role']);
+      final content = _stringOrNull(map['content']);
+      if (role == null || content == null) continue;
+
+      chats.add(
+        AiChatsCompanion.insert(
+          id: _stringOrNull(map['id']) ?? _uuid.v4(),
+          entryId: entryId,
+          role: role,
+          content: content,
+          createdAt:
+              _jsonInt(map['createdAt']) ??
+              _jsonInt(map['created_at']) ??
+              DateTime.now().millisecondsSinceEpoch + chats.length,
+          metadataJson: Value(
+            _stringOrNull(map['metadataJson']) ??
+                _stringOrNull(map['metadata_json']),
+          ),
+        ),
+      );
+    }
+    return chats;
+  }
+
+  Future<String> _restoreBackupImage({
+    required String entryId,
+    required int index,
+    required String zipPath,
+    required List<int> bytes,
+  }) async {
+    final appDirectory = await getApplicationDocumentsDirectory();
+    final imageDirectory = Directory(
+      p.join(appDirectory.path, 'entry_images', entryId),
+    );
+    await imageDirectory.create(recursive: true);
+
+    final extension = _safeImageExtension(zipPath);
+    final outputFile = File(p.join(imageDirectory.path, 'image-$index$extension'));
+    await outputFile.writeAsBytes(bytes, flush: true);
+    return outputFile.path;
+  }
+
+  Object? _decodeArchiveJson(Archive archive, String path) {
+    final file = _archiveFile(archive, path);
+    if (file == null || !file.isFile) return null;
+    return jsonDecode(utf8.decode(file.readBytes(), allowMalformed: true));
+  }
+
+  ArchiveFile? _archiveFile(Archive archive, String path) {
+    final normalized = path.replaceAll('\\', '/');
+    for (final file in archive.files) {
+      if (file.name.replaceAll('\\', '/') == normalized) {
+        return file;
+      }
+    }
+    return null;
+  }
+
+  ArchiveFile _archiveStringFile(String path, String content) {
+    final bytes = Uint8List.fromList(utf8.encode(content));
+    return ArchiveFile(path, bytes.length, bytes);
+  }
+
+  ArchiveFile _archiveBytesFile(String path, List<int> bytes) {
+    final data = Uint8List.fromList(bytes);
+    return ArchiveFile(path, data.length, data);
+  }
+
+  String _safeImageExtension(String path) {
+    final extension = p.extension(path).toLowerCase();
+    switch (extension) {
+      case '.jpg':
+      case '.jpeg':
+      case '.png':
+      case '.webp':
+      case '.heic':
+        return extension;
+      default:
+        return '.jpg';
+    }
+  }
+
+  String _prettyJson(Object? value) {
+    return const JsonEncoder.withIndent('  ').convert(value);
+  }
+
+  String? _stringOrNull(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  int? _jsonInt(Object? value) {
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  double? _jsonDouble(Object? value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
   }
 
   List<List<String>> _parseCsv(String input) {
@@ -524,6 +1018,7 @@ class _ImportedCsvEntry {
     required this.type,
     required this.timestamp,
     required this.description,
+    required this.reasoning,
     required this.durationMinutes,
     required this.icon,
     required this.metrics,
@@ -534,7 +1029,22 @@ class _ImportedCsvEntry {
   final EntryType type;
   final DateTime timestamp;
   final String? description;
+  final String? reasoning;
   final int? durationMinutes;
   final String? icon;
   final Map<NutritionMetricType, double> metrics;
+}
+
+class _ImportedBackupEntry {
+  const _ImportedBackupEntry({
+    required this.row,
+    required this.metrics,
+    required this.images,
+    required this.chats,
+  });
+
+  final DiaryEntryRow row;
+  final List<EntryMetricsCompanion> metrics;
+  final List<EntryImagesCompanion> images;
+  final List<AiChatsCompanion> chats;
 }

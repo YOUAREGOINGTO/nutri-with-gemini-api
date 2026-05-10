@@ -134,6 +134,17 @@ class $DiaryEntriesTable extends DiaryEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _reasoningMeta = const VerificationMeta(
+    'reasoning',
+  );
+  @override
+  late final GeneratedColumn<String> reasoning = GeneratedColumn<String>(
+    'reasoning',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _durationMinutesMeta = const VerificationMeta(
     'durationMinutes',
   );
@@ -159,6 +170,7 @@ class $DiaryEntriesTable extends DiaryEntries
     icon,
     status,
     description,
+    reasoning,
     durationMinutes,
   ];
   @override
@@ -258,6 +270,12 @@ class $DiaryEntriesTable extends DiaryEntries
         ),
       );
     }
+    if (data.containsKey('reasoning')) {
+      context.handle(
+        _reasoningMeta,
+        reasoning.isAcceptableOrUnknown(data['reasoning']!, _reasoningMeta),
+      );
+    }
     if (data.containsKey('duration_minutes')) {
       context.handle(
         _durationMinutesMeta,
@@ -324,6 +342,10 @@ class $DiaryEntriesTable extends DiaryEntries
         DriftSqlType.string,
         data['${effectivePrefix}description'],
       ),
+      reasoning: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reasoning'],
+      ),
       durationMinutes: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}duration_minutes'],
@@ -350,6 +372,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
   final String? icon;
   final int status;
   final String? description;
+  final String? reasoning;
   final int? durationMinutes;
   const DiaryEntryRow({
     required this.updatedAt,
@@ -364,6 +387,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     this.icon,
     required this.status,
     this.description,
+    this.reasoning,
     this.durationMinutes,
   });
   @override
@@ -388,6 +412,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     map['status'] = Variable<int>(status);
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || reasoning != null) {
+      map['reasoning'] = Variable<String>(reasoning);
     }
     if (!nullToAbsent || durationMinutes != null) {
       map['duration_minutes'] = Variable<int>(durationMinutes);
@@ -415,6 +442,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
+      reasoning: reasoning == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reasoning),
       durationMinutes: durationMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(durationMinutes),
@@ -439,6 +469,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       icon: serializer.fromJson<String?>(json['icon']),
       status: serializer.fromJson<int>(json['status']),
       description: serializer.fromJson<String?>(json['description']),
+      reasoning: serializer.fromJson<String?>(json['reasoning']),
       durationMinutes: serializer.fromJson<int?>(json['durationMinutes']),
     );
   }
@@ -458,6 +489,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       'icon': serializer.toJson<String?>(icon),
       'status': serializer.toJson<int>(status),
       'description': serializer.toJson<String?>(description),
+      'reasoning': serializer.toJson<String?>(reasoning),
       'durationMinutes': serializer.toJson<int?>(durationMinutes),
     };
   }
@@ -475,6 +507,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     Value<String?> icon = const Value.absent(),
     int? status,
     Value<String?> description = const Value.absent(),
+    Value<String?> reasoning = const Value.absent(),
     Value<int?> durationMinutes = const Value.absent(),
   }) => DiaryEntryRow(
     updatedAt: updatedAt ?? this.updatedAt,
@@ -489,6 +522,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     icon: icon.present ? icon.value : this.icon,
     status: status ?? this.status,
     description: description.present ? description.value : this.description,
+    reasoning: reasoning.present ? reasoning.value : this.reasoning,
     durationMinutes: durationMinutes.present
         ? durationMinutes.value
         : this.durationMinutes,
@@ -511,6 +545,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       description: data.description.present
           ? data.description.value
           : this.description,
+      reasoning: data.reasoning.present ? data.reasoning.value : this.reasoning,
       durationMinutes: data.durationMinutes.present
           ? data.durationMinutes.value
           : this.durationMinutes,
@@ -532,6 +567,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
           ..write('icon: $icon, ')
           ..write('status: $status, ')
           ..write('description: $description, ')
+          ..write('reasoning: $reasoning, ')
           ..write('durationMinutes: $durationMinutes')
           ..write(')'))
         .toString();
@@ -551,6 +587,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     icon,
     status,
     description,
+    reasoning,
     durationMinutes,
   );
   @override
@@ -569,6 +606,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
           other.icon == this.icon &&
           other.status == this.status &&
           other.description == this.description &&
+          other.reasoning == this.reasoning &&
           other.durationMinutes == this.durationMinutes);
 }
 
@@ -585,6 +623,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
   final Value<String?> icon;
   final Value<int> status;
   final Value<String?> description;
+  final Value<String?> reasoning;
   final Value<int?> durationMinutes;
   final Value<int> rowid;
   const DiaryEntriesCompanion({
@@ -600,6 +639,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     this.icon = const Value.absent(),
     this.status = const Value.absent(),
     this.description = const Value.absent(),
+    this.reasoning = const Value.absent(),
     this.durationMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -616,6 +656,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     this.icon = const Value.absent(),
     this.status = const Value.absent(),
     this.description = const Value.absent(),
+    this.reasoning = const Value.absent(),
     this.durationMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -636,6 +677,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     Expression<String>? icon,
     Expression<int>? status,
     Expression<String>? description,
+    Expression<String>? reasoning,
     Expression<int>? durationMinutes,
     Expression<int>? rowid,
   }) {
@@ -652,6 +694,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
       if (icon != null) 'icon': icon,
       if (status != null) 'status': status,
       if (description != null) 'description': description,
+      if (reasoning != null) 'reasoning': reasoning,
       if (durationMinutes != null) 'duration_minutes': durationMinutes,
       if (rowid != null) 'rowid': rowid,
     });
@@ -670,6 +713,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     Value<String?>? icon,
     Value<int>? status,
     Value<String?>? description,
+    Value<String?>? reasoning,
     Value<int?>? durationMinutes,
     Value<int>? rowid,
   }) {
@@ -686,6 +730,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
       icon: icon ?? this.icon,
       status: status ?? this.status,
       description: description ?? this.description,
+      reasoning: reasoning ?? this.reasoning,
       durationMinutes: durationMinutes ?? this.durationMinutes,
       rowid: rowid ?? this.rowid,
     );
@@ -730,6 +775,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     if (description.present) {
       map['description'] = Variable<String>(description.value);
     }
+    if (reasoning.present) {
+      map['reasoning'] = Variable<String>(reasoning.value);
+    }
     if (durationMinutes.present) {
       map['duration_minutes'] = Variable<int>(durationMinutes.value);
     }
@@ -754,7 +802,425 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
           ..write('icon: $icon, ')
           ..write('status: $status, ')
           ..write('description: $description, ')
+          ..write('reasoning: $reasoning, ')
           ..write('durationMinutes: $durationMinutes, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $EntryImagesTable extends EntryImages
+    with TableInfo<$EntryImagesTable, EntryImageRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EntryImagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<String> entryId = GeneratedColumn<String>(
+    'entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localPathMeta = const VerificationMeta(
+    'localPath',
+  );
+  @override
+  late final GeneratedColumn<String> localPath = GeneratedColumn<String>(
+    'local_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _originalNameMeta = const VerificationMeta(
+    'originalName',
+  );
+  @override
+  late final GeneratedColumn<String> originalName = GeneratedColumn<String>(
+    'original_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mimeTypeMeta = const VerificationMeta(
+    'mimeType',
+  );
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+    'mime_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    entryId,
+    localPath,
+    originalName,
+    mimeType,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'entry_images';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EntryImageRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('entry_id')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('local_path')) {
+      context.handle(
+        _localPathMeta,
+        localPath.isAcceptableOrUnknown(data['local_path']!, _localPathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localPathMeta);
+    }
+    if (data.containsKey('original_name')) {
+      context.handle(
+        _originalNameMeta,
+        originalName.isAcceptableOrUnknown(
+          data['original_name']!,
+          _originalNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(
+        _mimeTypeMeta,
+        mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  EntryImageRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EntryImageRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_id'],
+      )!,
+      localPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_path'],
+      )!,
+      originalName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}original_name'],
+      ),
+      mimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mime_type'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $EntryImagesTable createAlias(String alias) {
+    return $EntryImagesTable(attachedDatabase, alias);
+  }
+}
+
+class EntryImageRow extends DataClass implements Insertable<EntryImageRow> {
+  final String id;
+  final String entryId;
+  final String localPath;
+  final String? originalName;
+  final String? mimeType;
+  final int createdAt;
+  const EntryImageRow({
+    required this.id,
+    required this.entryId,
+    required this.localPath,
+    this.originalName,
+    this.mimeType,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['entry_id'] = Variable<String>(entryId);
+    map['local_path'] = Variable<String>(localPath);
+    if (!nullToAbsent || originalName != null) {
+      map['original_name'] = Variable<String>(originalName);
+    }
+    if (!nullToAbsent || mimeType != null) {
+      map['mime_type'] = Variable<String>(mimeType);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  EntryImagesCompanion toCompanion(bool nullToAbsent) {
+    return EntryImagesCompanion(
+      id: Value(id),
+      entryId: Value(entryId),
+      localPath: Value(localPath),
+      originalName: originalName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originalName),
+      mimeType: mimeType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mimeType),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory EntryImageRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EntryImageRow(
+      id: serializer.fromJson<String>(json['id']),
+      entryId: serializer.fromJson<String>(json['entryId']),
+      localPath: serializer.fromJson<String>(json['localPath']),
+      originalName: serializer.fromJson<String?>(json['originalName']),
+      mimeType: serializer.fromJson<String?>(json['mimeType']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'entryId': serializer.toJson<String>(entryId),
+      'localPath': serializer.toJson<String>(localPath),
+      'originalName': serializer.toJson<String?>(originalName),
+      'mimeType': serializer.toJson<String?>(mimeType),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  EntryImageRow copyWith({
+    String? id,
+    String? entryId,
+    String? localPath,
+    Value<String?> originalName = const Value.absent(),
+    Value<String?> mimeType = const Value.absent(),
+    int? createdAt,
+  }) => EntryImageRow(
+    id: id ?? this.id,
+    entryId: entryId ?? this.entryId,
+    localPath: localPath ?? this.localPath,
+    originalName: originalName.present ? originalName.value : this.originalName,
+    mimeType: mimeType.present ? mimeType.value : this.mimeType,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  EntryImageRow copyWithCompanion(EntryImagesCompanion data) {
+    return EntryImageRow(
+      id: data.id.present ? data.id.value : this.id,
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      localPath: data.localPath.present ? data.localPath.value : this.localPath,
+      originalName: data.originalName.present
+          ? data.originalName.value
+          : this.originalName,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntryImageRow(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('localPath: $localPath, ')
+          ..write('originalName: $originalName, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, entryId, localPath, originalName, mimeType, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EntryImageRow &&
+          other.id == this.id &&
+          other.entryId == this.entryId &&
+          other.localPath == this.localPath &&
+          other.originalName == this.originalName &&
+          other.mimeType == this.mimeType &&
+          other.createdAt == this.createdAt);
+}
+
+class EntryImagesCompanion extends UpdateCompanion<EntryImageRow> {
+  final Value<String> id;
+  final Value<String> entryId;
+  final Value<String> localPath;
+  final Value<String?> originalName;
+  final Value<String?> mimeType;
+  final Value<int> createdAt;
+  final Value<int> rowid;
+  const EntryImagesCompanion({
+    this.id = const Value.absent(),
+    this.entryId = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.originalName = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  EntryImagesCompanion.insert({
+    required String id,
+    required String entryId,
+    required String localPath,
+    this.originalName = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    required int createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       entryId = Value(entryId),
+       localPath = Value(localPath),
+       createdAt = Value(createdAt);
+  static Insertable<EntryImageRow> custom({
+    Expression<String>? id,
+    Expression<String>? entryId,
+    Expression<String>? localPath,
+    Expression<String>? originalName,
+    Expression<String>? mimeType,
+    Expression<int>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entryId != null) 'entry_id': entryId,
+      if (localPath != null) 'local_path': localPath,
+      if (originalName != null) 'original_name': originalName,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  EntryImagesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? entryId,
+    Value<String>? localPath,
+    Value<String?>? originalName,
+    Value<String?>? mimeType,
+    Value<int>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return EntryImagesCompanion(
+      id: id ?? this.id,
+      entryId: entryId ?? this.entryId,
+      localPath: localPath ?? this.localPath,
+      originalName: originalName ?? this.originalName,
+      mimeType: mimeType ?? this.mimeType,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (entryId.present) {
+      map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (localPath.present) {
+      map['local_path'] = Variable<String>(localPath.value);
+    }
+    if (originalName.present) {
+      map['original_name'] = Variable<String>(originalName.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntryImagesCompanion(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('localPath: $localPath, ')
+          ..write('originalName: $originalName, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1017,6 +1483,419 @@ class EntryMetricsCompanion extends UpdateCompanion<EntryMetricRow> {
           ..write('entryId: $entryId, ')
           ..write('type: $type, ')
           ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AiChatsTable extends AiChats with TableInfo<$AiChatsTable, AiChatRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AiChatsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<String> entryId = GeneratedColumn<String>(
+    'entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _roleMeta = const VerificationMeta('role');
+  @override
+  late final GeneratedColumn<String> role = GeneratedColumn<String>(
+    'role',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _metadataJsonMeta = const VerificationMeta(
+    'metadataJson',
+  );
+  @override
+  late final GeneratedColumn<String> metadataJson = GeneratedColumn<String>(
+    'metadata_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    entryId,
+    role,
+    content,
+    createdAt,
+    metadataJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'ai_chats';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AiChatRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('entry_id')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('role')) {
+      context.handle(
+        _roleMeta,
+        role.isAcceptableOrUnknown(data['role']!, _roleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_roleMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('metadata_json')) {
+      context.handle(
+        _metadataJsonMeta,
+        metadataJson.isAcceptableOrUnknown(
+          data['metadata_json']!,
+          _metadataJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AiChatRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AiChatRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_id'],
+      )!,
+      role: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}role'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      metadataJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}metadata_json'],
+      ),
+    );
+  }
+
+  @override
+  $AiChatsTable createAlias(String alias) {
+    return $AiChatsTable(attachedDatabase, alias);
+  }
+}
+
+class AiChatRow extends DataClass implements Insertable<AiChatRow> {
+  final String id;
+  final String entryId;
+  final String role;
+  final String content;
+  final int createdAt;
+  final String? metadataJson;
+  const AiChatRow({
+    required this.id,
+    required this.entryId,
+    required this.role,
+    required this.content,
+    required this.createdAt,
+    this.metadataJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['entry_id'] = Variable<String>(entryId);
+    map['role'] = Variable<String>(role);
+    map['content'] = Variable<String>(content);
+    map['created_at'] = Variable<int>(createdAt);
+    if (!nullToAbsent || metadataJson != null) {
+      map['metadata_json'] = Variable<String>(metadataJson);
+    }
+    return map;
+  }
+
+  AiChatsCompanion toCompanion(bool nullToAbsent) {
+    return AiChatsCompanion(
+      id: Value(id),
+      entryId: Value(entryId),
+      role: Value(role),
+      content: Value(content),
+      createdAt: Value(createdAt),
+      metadataJson: metadataJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(metadataJson),
+    );
+  }
+
+  factory AiChatRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AiChatRow(
+      id: serializer.fromJson<String>(json['id']),
+      entryId: serializer.fromJson<String>(json['entryId']),
+      role: serializer.fromJson<String>(json['role']),
+      content: serializer.fromJson<String>(json['content']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      metadataJson: serializer.fromJson<String?>(json['metadataJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'entryId': serializer.toJson<String>(entryId),
+      'role': serializer.toJson<String>(role),
+      'content': serializer.toJson<String>(content),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'metadataJson': serializer.toJson<String?>(metadataJson),
+    };
+  }
+
+  AiChatRow copyWith({
+    String? id,
+    String? entryId,
+    String? role,
+    String? content,
+    int? createdAt,
+    Value<String?> metadataJson = const Value.absent(),
+  }) => AiChatRow(
+    id: id ?? this.id,
+    entryId: entryId ?? this.entryId,
+    role: role ?? this.role,
+    content: content ?? this.content,
+    createdAt: createdAt ?? this.createdAt,
+    metadataJson: metadataJson.present ? metadataJson.value : this.metadataJson,
+  );
+  AiChatRow copyWithCompanion(AiChatsCompanion data) {
+    return AiChatRow(
+      id: data.id.present ? data.id.value : this.id,
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      role: data.role.present ? data.role.value : this.role,
+      content: data.content.present ? data.content.value : this.content,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      metadataJson: data.metadataJson.present
+          ? data.metadataJson.value
+          : this.metadataJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AiChatRow(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('role: $role, ')
+          ..write('content: $content, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('metadataJson: $metadataJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, entryId, role, content, createdAt, metadataJson);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AiChatRow &&
+          other.id == this.id &&
+          other.entryId == this.entryId &&
+          other.role == this.role &&
+          other.content == this.content &&
+          other.createdAt == this.createdAt &&
+          other.metadataJson == this.metadataJson);
+}
+
+class AiChatsCompanion extends UpdateCompanion<AiChatRow> {
+  final Value<String> id;
+  final Value<String> entryId;
+  final Value<String> role;
+  final Value<String> content;
+  final Value<int> createdAt;
+  final Value<String?> metadataJson;
+  final Value<int> rowid;
+  const AiChatsCompanion({
+    this.id = const Value.absent(),
+    this.entryId = const Value.absent(),
+    this.role = const Value.absent(),
+    this.content = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.metadataJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AiChatsCompanion.insert({
+    required String id,
+    required String entryId,
+    required String role,
+    required String content,
+    required int createdAt,
+    this.metadataJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       entryId = Value(entryId),
+       role = Value(role),
+       content = Value(content),
+       createdAt = Value(createdAt);
+  static Insertable<AiChatRow> custom({
+    Expression<String>? id,
+    Expression<String>? entryId,
+    Expression<String>? role,
+    Expression<String>? content,
+    Expression<int>? createdAt,
+    Expression<String>? metadataJson,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entryId != null) 'entry_id': entryId,
+      if (role != null) 'role': role,
+      if (content != null) 'content': content,
+      if (createdAt != null) 'created_at': createdAt,
+      if (metadataJson != null) 'metadata_json': metadataJson,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AiChatsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? entryId,
+    Value<String>? role,
+    Value<String>? content,
+    Value<int>? createdAt,
+    Value<String?>? metadataJson,
+    Value<int>? rowid,
+  }) {
+    return AiChatsCompanion(
+      id: id ?? this.id,
+      entryId: entryId ?? this.entryId,
+      role: role ?? this.role,
+      content: content ?? this.content,
+      createdAt: createdAt ?? this.createdAt,
+      metadataJson: metadataJson ?? this.metadataJson,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (entryId.present) {
+      map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (role.present) {
+      map['role'] = Variable<String>(role.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (metadataJson.present) {
+      map['metadata_json'] = Variable<String>(metadataJson.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AiChatsCompanion(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('role: $role, ')
+          ..write('content: $content, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('metadataJson: $metadataJson, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2599,7 +3478,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $DiaryEntriesTable diaryEntries = $DiaryEntriesTable(this);
+  late final $EntryImagesTable entryImages = $EntryImagesTable(this);
   late final $EntryMetricsTable entryMetrics = $EntryMetricsTable(this);
+  late final $AiChatsTable aiChats = $AiChatsTable(this);
   late final $UserProfilesTable userProfiles = $UserProfilesTable(this);
   late final $MetricGoalsTable metricGoals = $MetricGoalsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
@@ -2610,7 +3491,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     diaryEntries,
+    entryImages,
     entryMetrics,
+    aiChats,
     userProfiles,
     metricGoals,
     appSettings,

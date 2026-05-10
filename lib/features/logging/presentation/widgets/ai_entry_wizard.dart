@@ -12,9 +12,10 @@ class AIEntryWizard extends StatefulWidget {
     super.key,
     required this.isExercise,
     required this.descriptionController,
-    this.image,
+    required this.images,
     required this.canUseCamera,
     required this.onPickImage,
+    required this.onRemoveImage,
     required this.onPromptSearch,
     required this.onAddOptimistic,
     required this.onEnterManually,
@@ -22,9 +23,10 @@ class AIEntryWizard extends StatefulWidget {
   });
   final bool isExercise;
   final TextEditingController descriptionController;
-  final File? image;
+  final List<File> images;
   final bool canUseCamera;
   final Function(ImageSource) onPickImage;
+  final ValueChanged<int> onRemoveImage;
   final Future<List<DiaryEntry>> Function(String) onPromptSearch;
   final VoidCallback onAddOptimistic;
   final VoidCallback onEnterManually;
@@ -62,9 +64,10 @@ class _AIEntryWizardState extends State<AIEntryWizard> {
       children: [
         if (!widget.isExercise)
           FoodImagePicker(
-            image: widget.image,
+            images: widget.images,
             canUseCamera: widget.canUseCamera,
             onPickImage: widget.onPickImage,
+            onRemoveImage: widget.onRemoveImage,
           ),
         if (!widget.isExercise) const Gap(16),
         LayoutBuilder(

@@ -123,60 +123,130 @@ class AIService {
   List<Map<String, dynamic>> _foodMessages({
     String? textDescription,
     String? base64Image,
+    List<String>? base64Images,
   }) {
+    final images = _mergedBase64Images(base64Image, base64Images);
     final messages = <Map<String, dynamic>>[
       {
         'role': 'system',
         'content': '''
-You are a nutritionist AI. Analyze the food provided (text or image).
-Return STRICT JSON ONLY. No markdown, no intro/outro.
+You are a nutrition estimation assistant for a food diary.
+The app intent is already Log Food. Return STRICT JSON ONLY. No markdown, no intro/outro.
+
+Output schema, with types only. In the final response, replace these type names with actual JSON values:
+{
+  "food_name": string,
+  "estimated_quantity": string,
+  "reasoning": string,
+  "metrics": {
+    "calories": number,
+    "carbs": number,
+    "sugars": number,
+    "fats": number,
+    "saturated_fats": number,
+    "protein": number,
+    "fiber": number,
+    "sodium": number,
+    "caffeine": number,
+    "water": number
+  },
+  "icon": string
+}
+
+Rules:
+- Return exactly one JSON object with exactly these top-level keys.
+- All metric values must be JSON numbers, never strings or null.
+- Always include every metrics key.
+- Do not include confidence, record_type, arrays, comments, or extra keys.
+- User text is the strongest source for quantity.
+- Images identify foods and estimate visible portions. Use all images as foods/drinks the user is logging in one entry by default.
+- Multiple images usually mean multiple consumed foods/drinks or portion evidence for what the user ate.
+- Sum the nutrition across all distinct consumed foods/drinks shown in the provided images, unless the user text narrows the logged amount.
+- If multiple distinct foods/drinks are logged, combine them into one concise food_name and summarize all quantities in estimated_quantity.
+- Only treat an image as a duplicate angle if the user says it is another angle/the same item, or if it is clearly the exact same food portion from another angle.
+- Do not double count clear duplicate image angles.
+- If an image is unrelated or not food/drink, ignore it for nutrition and mention that briefly in reasoning.
+- Return all metrics as 0 only when no food/drink is being logged at all.
+- Do not assume the user is logging a full meal or full plate.
+- If the user says half of this, one piece, one spoon, only this part, or similar, estimate only that logged amount.
+- Metrics must be the final total for what the user is logging.
+- estimated_quantity should briefly summarize the quantity used.
+- reasoning should be a useful user-facing explanation in 2-4 sentences. Describe what the input appears to be, how the quantity was interpreted, how multiple images or unrelated images were handled, and why the calorie/macro estimate or zero values make sense.
+- If the input is not food or drink, use the same schema with every metric set to 0.
+- For non-food inputs, food_name should describe the item, and reasoning should explain why calories and macros are 0.
+- Do not invent calories for blood tests, documents, medicine labels, random labels, packaging labels without a consumed portion, or other non-food/non-drink inputs.
+- A package label or nutrition label alone is not a consumed portion; use label information only when the user or image evidence indicates an eaten/drunk amount.
 Select the most appropriate icon from this list:
 [bakery_dining, brunch_dining, bento, cake, coffee, cookie, egg_alt, fastfood, flatware, liquor, microwave, nightlife, outdoor_grill, ramen_dining, restaurant, rice_bowl, sports_bar, tapas]
-
-Structure:
-{
-  "food_name": "Short descriptive name",
-  "metrics": {
-    "calories": 100.0,
-    "carbs": 20.0,
-    "sugars": 6.0,
-    "fats": 5.0,
-    "saturated_fats": 1.5,
-    "protein": 10.0,
-    "fiber": 3.0,
-    "sodium": 300.0,
-    "caffeine": 0.0,
-    "water": 50.0
-  },
-  "icon": "fastfood",
-  "confidence": 0.9
-}
-Use one decimal place for every metric value.
-Always include all metric keys shown above.
-If unclear, provide best guess with lower confidence.
 ''',
       },
     ];
 
-    if (base64Image != null) {
+    if (images.isNotEmpty) {
+      final content = <Map<String, dynamic>>[
+        {
+          'type': 'text',
+          'text':
+              textDescription?.trim().isNotEmpty == true
+                  ? textDescription!.trim()
+                  : 'Analyze the provided food/drink images.',
+        },
+      ];
+
+      for (var i = 0; i < images.length; i++) {
+        content.add({'type': 'text', 'text': 'Image ${i + 1}'});
+        content.add({
+          'type': 'image_url',
+          'image_url': {'url': 'data:image/jpeg;base64,${images[i]}'},
+        });
+      }
       messages.add({
         'role': 'user',
-        'content': [
-          {'type': 'text', 'text': textDescription ?? 'Analyze this food'},
-          {
-            'type': 'image_url',
-            'image_url': {'url': 'data:image/jpeg;base64,$base64Image'},
-          },
-        ],
+        'content': content,
       });
     } else {
       messages.add({
         'role': 'user',
-        'content': textDescription ?? 'Analyze this food',
+        'content': textDescription ?? 'Analyze this food or drink.',
       });
     }
 
     return messages;
+  }
+
+  List<Map<String, dynamic>> _foodCorrectionMessages({
+    required String correctionMessage,
+    required String currentEntryJson,
+    required String previousAiJson,
+    required String previousReasoning,
+    required String imageMetadataJson,
+    List<String>? base64Images,
+  }) {
+    final prompt = '''
+Correct the existing food diary entry using the new user correction.
+
+Current diary entry values:
+$currentEntryJson
+
+Previous AI JSON/result:
+$previousAiJson
+
+Previous user-facing reasoning:
+$previousReasoning
+
+Image metadata/paths:
+$imageMetadataJson
+
+New user correction message:
+$correctionMessage
+
+Return corrected strict JSON for the same diary entry. Update only the values that should change because of the correction, while keeping the same schema and food logging rules.
+''';
+
+    return _foodMessages(
+      textDescription: prompt,
+      base64Images: base64Images,
+    );
   }
 
   List<Map<String, dynamic>> _exerciseMessages({
@@ -439,6 +509,7 @@ Calculate calories based on the user profile provided and standard MET values.
   Future<Map<String, dynamic>> analyzeFood({
     String? textDescription,
     String? base64Image,
+    List<String>? base64Images,
     String? requestId,
     String? modelOverride,
   }) async {
@@ -446,6 +517,31 @@ Calculate calories based on the user profile provided and standard MET values.
       messages: _foodMessages(
         textDescription: textDescription,
         base64Image: base64Image,
+        base64Images: base64Images,
+      ),
+      modelOverride: modelOverride,
+      requestId: requestId,
+    );
+  }
+
+  Future<Map<String, dynamic>> correctFoodEntry({
+    required String correctionMessage,
+    required String currentEntryJson,
+    required String previousAiJson,
+    required String previousReasoning,
+    required String imageMetadataJson,
+    List<String>? base64Images,
+    String? requestId,
+    String? modelOverride,
+  }) async {
+    return _chatCompletion(
+      messages: _foodCorrectionMessages(
+        correctionMessage: correctionMessage,
+        currentEntryJson: currentEntryJson,
+        previousAiJson: previousAiJson,
+        previousReasoning: previousReasoning,
+        imageMetadataJson: imageMetadataJson,
+        base64Images: base64Images,
       ),
       modelOverride: modelOverride,
       requestId: requestId,
@@ -490,6 +586,28 @@ Calculate calories based on the user profile provided and standard MET values.
       }
     }
     return content.trim();
+  }
+
+  List<String> _mergedBase64Images(
+    String? base64Image,
+    List<String>? base64Images,
+  ) {
+    final images = <String>[];
+    final seen = <String>{};
+
+    void add(String? value) {
+      final trimmed = value?.trim();
+      if (trimmed == null || trimmed.isEmpty || !seen.add(trimmed)) return;
+      images.add(trimmed);
+    }
+
+    add(base64Image);
+    if (base64Images != null) {
+      for (final image in base64Images) {
+        add(image);
+      }
+    }
+    return images;
   }
 }
 

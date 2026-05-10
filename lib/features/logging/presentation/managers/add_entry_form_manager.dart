@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
+import 'package:nutrinutri/features/diary/application/diary_controller.dart';
 import 'package:nutrinutri/features/diary/domain/diary_entry.dart';
 import 'package:nutrinutri/features/logging/presentation/add_entry_controller.dart';
 
@@ -13,6 +14,7 @@ class AddEntryFormManager {
   final VoidCallback onStateChanged;
 
   final descriptionController = TextEditingController();
+  final correctionController = TextEditingController();
   final nameController = TextEditingController();
   final metricControllers = {
     for (final metric in NutritionMetricType.values)
@@ -44,6 +46,7 @@ class AddEntryFormManager {
 
   void dispose() {
     descriptionController.dispose();
+    correctionController.dispose();
     nameController.dispose();
     for (final controller in metricControllers.values) {
       controller.dispose();
@@ -85,7 +88,7 @@ class AddEntryFormManager {
 
   Future<void> addOptimistic() async {
     final state = ref.read(addEntryControllerProvider);
-    if (descriptionController.text.isEmpty && state.image == null) {
+    if (descriptionController.text.isEmpty && state.images.isEmpty) {
       throw Exception('Please provide text or an image.');
     }
 
@@ -105,6 +108,15 @@ class AddEntryFormManager {
               entry.key: entry.value.text,
           },
           durationMinutes: durationController.text,
+        );
+  }
+
+  Future<void> applyAiCorrection(DiaryEntry existingEntry) async {
+    await ref
+        .read(diaryControllerProvider.notifier)
+        .correctFoodEntry(
+          entry: existingEntry,
+          correctionMessage: correctionController.text,
         );
   }
 

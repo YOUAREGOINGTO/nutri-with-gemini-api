@@ -7,6 +7,7 @@ environment:
   sdk: ^3.10.7
 
 dependencies:
+  archive: ^4.0.9
   cupertino_icons: ^1.0.8
   drift: ^2.31.0
   drift_flutter: ^0.2.8
@@ -28,7 +29,9 @@ dependencies:
   http: ^1.2.2
   image_picker: ^1.1.2
   intl: ^0.20.2
+  mime: ^2.0.0
   path: ^1.9.0
+  path_provider: ^2.1.5
   riverpod_annotation: ^4.0.2
   sqlite3_flutter_libs: ^0.5.20
   url_launcher: ^6.3.1

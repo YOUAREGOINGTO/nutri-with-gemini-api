@@ -7,6 +7,8 @@ import 'package:nutrinutri/core/providers.dart';
 import 'package:nutrinutri/core/utils/met_values.dart';
 import 'package:nutrinutri/features/diary/application/diary_controller.dart';
 import 'package:nutrinutri/features/diary/domain/diary_entry.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -14,22 +16,23 @@ part 'add_entry_controller.g.dart';
 
 class AddEntryState {
   AddEntryState({
-    this.image,
+    List<File>? images,
     this.showForm = false,
     required this.selectedDate,
     required this.selectedTime,
     this.selectedIcon = 'restaurant',
     this.type = EntryType.food,
-  });
-  final File? image;
+  }) : images = List.unmodifiable(images ?? const []);
+  final List<File> images;
   final bool showForm;
   final DateTime selectedDate;
   final TimeOfDay selectedTime;
   final String selectedIcon;
   final EntryType type;
+  File? get image => images.isEmpty ? null : images.first;
 
   AddEntryState copyWith({
-    File? image,
+    List<File>? images,
     bool? showForm,
     DateTime? selectedDate,
     TimeOfDay? selectedTime,
@@ -37,7 +40,7 @@ class AddEntryState {
     EntryType? type,
   }) {
     return AddEntryState(
-      image: image ?? this.image,
+      images: images ?? this.images,
       showForm: showForm ?? this.showForm,
       selectedDate: selectedDate ?? this.selectedDate,
       selectedTime: selectedTime ?? this.selectedTime,
@@ -50,6 +53,7 @@ class AddEntryState {
 @riverpod
 class AddEntryController extends _$AddEntryController {
   final _picker = ImagePicker();
+  static const _uuid = Uuid();
 
   @override
   AddEntryState build() {
@@ -72,7 +76,7 @@ class AddEntryController extends _$AddEntryController {
 
   void initializeWithEntry(DiaryEntry entry) {
     state = state.copyWith(
-      image: entry.imagePath != null ? File(entry.imagePath!) : null,
+      images: entry.imagePaths.map(File.new).toList(growable: false),
       showForm: true,
       selectedDate: entry.timestamp,
       selectedTime: TimeOfDay.fromDateTime(entry.timestamp),
@@ -84,6 +88,21 @@ class AddEntryController extends _$AddEntryController {
   }
 
   Future<File?> pickImage(ImageSource source) async {
+    if (source == ImageSource.gallery) {
+      final pickedFiles = await _picker.pickMultiImage(
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      if (pickedFiles.isEmpty) return null;
+      final newImages = <File>[];
+      for (final file in pickedFiles) {
+        newImages.add(await _persistPickedImage(file));
+      }
+      state = state.copyWith(images: [...state.images, ...newImages]);
+      return newImages.first;
+    }
+
     final pickedFile = await _picker.pickImage(
       source: source,
       maxWidth: 800,
@@ -91,11 +110,37 @@ class AddEntryController extends _$AddEntryController {
       imageQuality: 85,
     );
     if (pickedFile != null) {
-      final image = File(pickedFile.path);
-      state = state.copyWith(image: image);
+      final image = await _persistPickedImage(pickedFile);
+      state = state.copyWith(images: [...state.images, image]);
       return image;
     }
     return null;
+  }
+
+  Future<File> _persistPickedImage(XFile pickedFile) async {
+    final sourceFile = File(pickedFile.path);
+    try {
+      final appDirectory = await getApplicationDocumentsDirectory();
+      final imageDirectory = Directory(
+        p.join(appDirectory.path, 'entry_images', 'pending'),
+      );
+      await imageDirectory.create(recursive: true);
+      final extension = p.extension(pickedFile.path).isEmpty
+          ? '.jpg'
+          : p.extension(pickedFile.path);
+      final targetFile = File(
+        p.join(imageDirectory.path, '${_uuid.v4()}$extension'),
+      );
+      return sourceFile.copy(targetFile.path);
+    } catch (_) {
+      return sourceFile;
+    }
+  }
+
+  void removeImageAt(int index) {
+    if (index < 0 || index >= state.images.length) return;
+    final nextImages = [...state.images]..removeAt(index);
+    state = state.copyWith(images: nextImages);
   }
 
   void updateDate(DateTime date) {
@@ -126,7 +171,7 @@ class AddEntryController extends _$AddEntryController {
           date: state.selectedDate,
           time: state.selectedTime,
           description: description?.isNotEmpty == true ? description : null,
-          imagePath: state.image?.path,
+          imagePaths: state.images.map((image) => image.path).toList(),
           type: state.type,
         );
   }
@@ -175,10 +220,13 @@ class AddEntryController extends _$AddEntryController {
         type: state.type,
         metrics: finalMetrics,
         timestamp: timestamp,
-        imagePath: state.image?.path ?? existingEntry.imagePath,
+        imagePaths: state.images.isNotEmpty
+            ? state.images.map((image) => image.path).toList()
+            : existingEntry.imagePaths,
         icon: state.selectedIcon,
         status: existingEntry.status,
         description: existingEntry.description,
+        reasoning: existingEntry.reasoning,
         durationMinutes: finalDuration,
       );
       await diaryService.updateEntry(updatedEntry);
@@ -189,7 +237,7 @@ class AddEntryController extends _$AddEntryController {
         type: state.type,
         metrics: finalMetrics,
         timestamp: timestamp,
-        imagePath: state.image?.path,
+        imagePaths: state.images.map((image) => image.path).toList(),
         icon: state.selectedIcon,
         durationMinutes: finalDuration,
       );

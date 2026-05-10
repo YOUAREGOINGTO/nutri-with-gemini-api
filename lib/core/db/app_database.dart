@@ -24,7 +24,21 @@ class DiaryEntries extends Table with AuditColumns {
   IntColumn get status =>
       integer().withDefault(const Constant(0))(); // FoodEntryStatus.index
   TextColumn get description => text().nullable()();
+  TextColumn get reasoning => text().nullable()();
   IntColumn get durationMinutes => integer().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('EntryImageRow')
+class EntryImages extends Table {
+  TextColumn get id => text()();
+  TextColumn get entryId => text()();
+  TextColumn get localPath => text()();
+  TextColumn get originalName => text().nullable()();
+  TextColumn get mimeType => text().nullable()();
+  IntColumn get createdAt => integer()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -38,6 +52,19 @@ class EntryMetrics extends Table {
 
   @override
   Set<Column> get primaryKey => {entryId, type};
+}
+
+@DataClassName('AiChatRow')
+class AiChats extends Table {
+  TextColumn get id => text()();
+  TextColumn get entryId => text()();
+  TextColumn get role => text()();
+  TextColumn get content => text()();
+  IntColumn get createdAt => integer()();
+  TextColumn get metadataJson => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 @DataClassName('UserProfileRow')
@@ -89,7 +116,9 @@ class LocalPrefs extends Table {
 @DriftDatabase(
   tables: [
     DiaryEntries,
+    EntryImages,
     EntryMetrics,
+    AiChats,
     UserProfiles,
     MetricGoals,
     AppSettings,
@@ -109,7 +138,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -119,6 +148,9 @@ class AppDatabase extends _$AppDatabase {
     onUpgrade: (m, from, to) async {
       if (from < 2) {
         await _migrateFromV1();
+      }
+      if (from < 3) {
+        await _migrateFromV2();
       }
     },
   );
@@ -301,5 +333,52 @@ WHERE goal_protein IS NOT NULL;
     await customStatement(
       'ALTER TABLE user_profiles_new RENAME TO user_profiles;',
     );
+  }
+
+  Future<void> _migrateFromV2() async {
+    await customStatement('ALTER TABLE diary_entries ADD COLUMN reasoning TEXT;');
+
+    await customStatement('''
+CREATE TABLE IF NOT EXISTS entry_images (
+  id TEXT NOT NULL PRIMARY KEY,
+  entry_id TEXT NOT NULL,
+  local_path TEXT NOT NULL,
+  original_name TEXT,
+  mime_type TEXT,
+  created_at INTEGER NOT NULL
+);
+''');
+
+    await customStatement('''
+INSERT OR IGNORE INTO entry_images (
+  id,
+  entry_id,
+  local_path,
+  original_name,
+  mime_type,
+  created_at
+)
+SELECT
+  id || '-image-1',
+  id,
+  image_path,
+  NULL,
+  NULL,
+  COALESCE(updated_at, timestamp)
+FROM diary_entries
+WHERE image_path IS NOT NULL
+  AND TRIM(image_path) != '';
+''');
+
+    await customStatement('''
+CREATE TABLE IF NOT EXISTS ai_chats (
+  id TEXT NOT NULL PRIMARY KEY,
+  entry_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  metadata_json TEXT
+);
+''');
   }
 }
