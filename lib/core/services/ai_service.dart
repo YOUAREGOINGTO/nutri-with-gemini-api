@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -125,18 +126,51 @@ class AIService {
 
   Map<String, String> _geminiHeaders() => {'Content-Type': 'application/json'};
 
+  String _foodRegionContext() {
+    final locale = ui.PlatformDispatcher.instance.locale;
+    final countryCode = locale.countryCode?.trim().toUpperCase() ?? '';
+    final regionName = _countryNameForCode(countryCode);
+
+    if (regionName != null) {
+      return 'User region context: $regionName. Use reasonable regional food and portion assumptions when estimating.';
+    }
+
+    return 'User region context: unknown. Use reasonable regional food and portion assumptions when the food context indicates them.';
+  }
+
+  String? _countryNameForCode(String code) {
+    return switch (code) {
+      'IN' => 'India',
+      'US' => 'America',
+      'CA' => 'Canada',
+      'GB' => 'United Kingdom',
+      'AU' => 'Australia',
+      'AE' => 'United Arab Emirates',
+      'SA' => 'Saudi Arabia',
+      'SG' => 'Singapore',
+      'MY' => 'Malaysia',
+      'PK' => 'Pakistan',
+      'BD' => 'Bangladesh',
+      'LK' => 'Sri Lanka',
+      'NP' => 'Nepal',
+      _ => null,
+    };
+  }
+
   List<Map<String, dynamic>> _foodMessages({
     String? textDescription,
     String? base64Image,
     List<String>? base64Images,
   }) {
     final images = _mergedBase64Images(base64Image, base64Images);
+    final regionContext = _foodRegionContext();
     final messages = <Map<String, dynamic>>[
       {
         'role': 'system',
         'content': '''
 You are a nutrition estimation assistant for a food diary.
 The app intent is already Log Food. Return STRICT JSON ONLY. No markdown, no intro/outro.
+$regionContext
 
 Output schema, with types only. In the final response, replace these type names with actual JSON values:
 {
@@ -176,9 +210,11 @@ Rules:
 - If the user says half of this, one piece, one spoon, only this part, or similar, estimate only that logged amount.
 - Metrics must be the final total for what the user is logging.
 - Before assigning metrics, identify the likely food/drink, consumed quantity, preparation method, and calorie-bearing additions.
+- Use the user region context and visible food cues to make reasonable regional portion and preparation assumptions.
 - Account for visible or strongly implied ingredients such as cooking oil, ghee, butter, sauces, dressings, gravy, added sugar, cream, cheese, nuts, batter, breading, and toppings.
 - If oil, ghee, sauces, or ingredients are uncertain, use a normal moderate assumption for that food and cuisine when the dish clearly implies them. Do not invent sides, toppings, or ingredients that are not visible, named, or typical for the identified item.
 - User text overrides assumptions. If the user says no oil, no sugar, plain, boiled, steamed, baked, or gives an ingredient/quantity correction, follow that.
+- Validate the final numbers before returning JSON. Check that calories roughly match the visible quantity, regional preparation style, cooking fats/additions, and macro totals.
 - In the final JSON, write reasoning before metrics as shown in the schema. The metric values must be consistent with the quantity and ingredient assumptions summarized in reasoning.
 - estimated_quantity should briefly summarize the quantity used.
 - reasoning should be concise but complete user-facing calculation basis, not hidden chain-of-thought. Include only needed details: what the input appears to be, how the logged quantity was interpreted, which visible or typical ingredients/cooking fats affected the estimate, how multiple images or unrelated images were handled, and why the calorie/macro estimate or zero values make sense.
