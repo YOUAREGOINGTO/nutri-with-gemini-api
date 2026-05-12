@@ -296,10 +296,17 @@ class SettingsController extends _$SettingsController {
   List<AIModelInfo> availableModelsFor(AIProvider provider) {
     return switch (provider) {
       AIProvider.openRouter => _openRouterModels,
-      AIProvider.gemini => state.geminiModels.isEmpty
-          ? _geminiFallbackModels
-          : [...state.geminiModels, _customGeminiModel],
+      AIProvider.gemini => _combinedGeminiModels(),
     };
+  }
+
+  List<AIModelInfo> _combinedGeminiModels() {
+    final modelsById = <String, AIModelInfo>{};
+    for (final model in [...state.geminiModels, ..._geminiFallbackModels]) {
+      modelsById[model.id] = model;
+    }
+    modelsById['custom'] = _customGeminiModel;
+    return modelsById.values.toList(growable: false);
   }
 
   int calculateDailyCalories({

@@ -163,6 +163,7 @@ class DiaryController extends _$DiaryController {
         ? null
         : await settingsService.getFallbackModel();
     final base64Images = await _imagesToBase64(entry.imagePaths);
+    Object? lastError;
 
     try {
       final result = await _correctEntry(
@@ -175,6 +176,7 @@ class DiaryController extends _$DiaryController {
       return;
     } catch (error) {
       if (_isCancellationError(error)) return;
+      lastError = error;
     }
 
     if (fallbackModel != null && fallbackModel.isNotEmpty) {
@@ -190,6 +192,7 @@ class DiaryController extends _$DiaryController {
         return;
       } catch (error) {
         if (_isCancellationError(error)) return;
+        lastError = error;
       }
     }
 
@@ -204,12 +207,12 @@ class DiaryController extends _$DiaryController {
       icon: 'warning',
       status: FoodEntryStatus.failed,
       description: entry.description,
-      reasoning: entry.reasoning,
+      reasoning: _failureReason(lastError),
       durationMinutes: entry.durationMinutes,
     );
     await diaryService.updateEntry(failedEntry);
     _invalidateDay(entry.timestamp);
-    throw Exception('AI correction failed');
+    throw Exception(_failureReason(lastError));
   }
 
   Future<void> _analyzeAndFill(DiaryEntry entry) async {
@@ -220,6 +223,7 @@ class DiaryController extends _$DiaryController {
         : await settingsService.getFallbackModel();
     final userProfile = await settingsService.getUserProfile();
     final base64Images = await _imagesToBase64(entry.imagePaths);
+    Object? lastError;
 
     try {
       final result = await _analyzeEntry(
@@ -234,6 +238,7 @@ class DiaryController extends _$DiaryController {
       if (_isCancellationError(error)) {
         return;
       }
+      lastError = error;
     }
 
     if (fallbackModel != null && fallbackModel.isNotEmpty) {
@@ -251,10 +256,11 @@ class DiaryController extends _$DiaryController {
         if (_isCancellationError(error)) {
           return;
         }
+        lastError = error;
       }
     }
 
-    await _updateFailed(entry);
+    await _updateFailed(entry, lastError);
   }
 
   Future<void> _updateSuccess(
@@ -373,15 +379,30 @@ class DiaryController extends _$DiaryController {
     );
   }
 
-  Future<void> _updateFailed(DiaryEntry entry) async {
+  Future<void> _updateFailed(DiaryEntry entry, Object? error) async {
     final failedEntry = _entryWithStatus(
       entry,
       name: 'Analysis Failed',
       status: FoodEntryStatus.failed,
       icon: 'warning',
+      reasoning: _failureReason(error),
     );
     await ref.read(diaryServiceProvider).updateEntry(failedEntry);
     _invalidateDay(entry.timestamp);
+  }
+
+  String _failureReason(Object? error) {
+    final raw = error?.toString().trim();
+    if (raw == null || raw.isEmpty) {
+      return 'AI request failed before a result was returned.';
+    }
+    final cleaned = raw.startsWith('Exception: ')
+        ? raw.substring('Exception: '.length)
+        : raw;
+    const maxLength = 700;
+    return cleaned.length <= maxLength
+        ? cleaned
+        : '${cleaned.substring(0, maxLength)}...';
   }
 
   DiaryEntry _entryWithStatus(
@@ -389,6 +410,7 @@ class DiaryController extends _$DiaryController {
     required String name,
     required FoodEntryStatus status,
     required String icon,
+    String? reasoning,
   }) {
     return DiaryEntry(
       id: entry.id,
@@ -399,7 +421,7 @@ class DiaryController extends _$DiaryController {
       imagePath: entry.imagePath,
       imagePaths: entry.imagePaths,
       description: entry.description,
-      reasoning: entry.reasoning,
+      reasoning: reasoning ?? entry.reasoning,
       status: status,
       icon: icon,
       durationMinutes: entry.durationMinutes,

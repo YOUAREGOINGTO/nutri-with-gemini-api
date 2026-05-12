@@ -23,11 +23,23 @@ class EntriesList extends ConsumerWidget {
   String _subtitleFor(DiaryEntry entry, String caloriesText) {
     return switch (entry.status) {
       FoodEntryStatus.processing => 'Analyzing with AI...',
-      FoodEntryStatus.failed => 'AI Analysis Failed. Tap to edit/retry.',
+      FoodEntryStatus.failed => _failedSubtitle(entry),
       FoodEntryStatus.cancelled => 'Analysis Cancelled. Tap to edit/retry.',
       FoodEntryStatus.synced =>
         '${DateFormat('HH:mm').format(entry.timestamp)} • $caloriesText kcal',
     };
+  }
+
+  String _failedSubtitle(DiaryEntry entry) {
+    final reason = entry.reasoning?.trim();
+    if (reason == null || reason.isEmpty) {
+      return 'AI Analysis Failed. Tap to edit/retry.';
+    }
+    const maxLength = 96;
+    final shortened = reason.length <= maxLength
+        ? reason
+        : '${reason.substring(0, maxLength)}...';
+    return 'AI failed: $shortened';
   }
 
   void _refreshDay(WidgetRef ref) {

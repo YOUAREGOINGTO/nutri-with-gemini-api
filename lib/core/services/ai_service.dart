@@ -52,7 +52,8 @@ class AIService {
     this.backupApiKey,
     this.backupModel,
     this.provider = AIProvider.openRouter,
-  });
+    http.Client Function()? clientFactory,
+  }) : _clientFactory = clientFactory ?? http.Client;
 
   static const String _openRouterBaseUrl =
       'https://openrouter.ai/api/v1/chat/completions';
@@ -64,6 +65,7 @@ class AIService {
   final String? backupApiKey;
   final String? backupModel;
   final AIProvider provider;
+  final http.Client Function() _clientFactory;
 
   // Track active clients for cancellation
   final Map<String, http.Client> _activeRequests = {};
@@ -355,7 +357,7 @@ Calculate calories based on the user profile provided and standard MET values.
       throw Exception('API Key is missing');
     }
 
-    final client = http.Client();
+    final client = _clientFactory();
     if (requestId != null) {
       _activeRequests[requestId]?.close(); // Cancel previous if exists
       _activeRequests[requestId] = client;
@@ -503,21 +505,28 @@ Calculate calories based on the user profile provided and standard MET values.
       if (_looksLikeClientException(primaryError)) {
         rethrow;
       }
-      if (fallbackKey.isEmpty || fallbackKey == primaryKey) {
+      final hasBackupModel = fallbackModel != primaryModel;
+      if (!hasBackupModel && (fallbackKey.isEmpty || fallbackKey == primaryKey)) {
         rethrow;
       }
 
-      debugPrint('Gemini primary key failed, retrying backup key: $primaryError');
+      final retryKey = fallbackKey.isEmpty ? primaryKey : fallbackKey;
+      final retryKeySource = retryKey == primaryKey ? 'primary' : 'backup';
+
+      debugPrint(
+        'Gemini primary request failed, retrying with '
+        '$retryKeySource key and $fallbackModel: $primaryError',
+      );
       try {
         final result = await _geminiGenerateContent(
           client: client,
           messages: messages,
-          apiKeyOverride: fallbackKey,
+          apiKeyOverride: retryKey,
           modelOverride: fallbackModel,
         );
         return _withAiRequestMetadata(
           result,
-          keySource: 'backup',
+          keySource: retryKeySource,
           modelId: _normalizeGeminiModel(fallbackModel),
           modelSource: fallbackModel == primaryModel ? 'primary' : 'backup',
         );

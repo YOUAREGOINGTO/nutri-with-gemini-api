@@ -33,6 +33,9 @@ jobs:
         run: flutter analyze
 
       - name: Test
+        env:
+          NUTRINUTRI_GEMINI_TEST_KEY: ${{ secrets.NUTRINUTRI_GEMINI_TEST_KEY }}
+          NUTRINUTRI_GEMINI_BACKUP_TEST_KEY: ${{ secrets.NUTRINUTRI_GEMINI_BACKUP_TEST_KEY }}
         run: |
           if [ -d test ] && find test -name "*_test.dart" -print -quit | grep -q .; then
             flutter test

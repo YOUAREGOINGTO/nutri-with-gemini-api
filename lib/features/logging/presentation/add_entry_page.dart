@@ -123,17 +123,30 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
       try {
         final metadata = jsonDecode(rawMetadata);
         if (metadata is! Map) continue;
+        if (!metadata.containsKey('ai_result') &&
+            !metadata.containsKey('ai_request')) {
+          continue;
+        }
+
         final request = metadata['ai_request'];
-        if (request is! Map) continue;
+        if (request is! Map) break;
         final provider = request['provider']?.toString();
         final keySource = request['key_source']?.toString();
-        if (provider != 'gemini' || keySource != 'backup') continue;
+        final modelSource = request['model_source']?.toString();
+        if (provider != 'gemini' ||
+            (keySource != 'backup' && modelSource != 'backup')) {
+          break;
+        }
 
         final model = request['model']?.toString();
-        final modelSource = request['model_source']?.toString();
-        label = modelSource == 'backup'
-            ? 'Gemini backup key and backup model used${model == null ? '' : ': $model'}'
-            : 'Gemini backup key used${model == null ? '' : ': $model'}';
+        final modelSuffix = model == null ? '' : ': $model';
+        if (keySource == 'backup' && modelSource == 'backup') {
+          label = 'Gemini backup key and backup model used$modelSuffix';
+        } else if (keySource == 'backup') {
+          label = 'Gemini backup key used$modelSuffix';
+        } else {
+          label = 'Gemini backup model used$modelSuffix';
+        }
         break;
       } catch (_) {
         continue;
