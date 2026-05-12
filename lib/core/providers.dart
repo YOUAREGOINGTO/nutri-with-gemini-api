@@ -1,4 +1,5 @@
 import 'package:nutrinutri/core/db/app_database.dart';
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/domain/user_profile.dart';
 import 'package:nutrinutri/core/services/ai_service.dart';
 import 'package:nutrinutri/core/services/device_id_service.dart';
@@ -45,8 +46,20 @@ Future<AIService> aiService(Ref ref) async {
   final settings = ref.watch(settingsServiceProvider);
   final provider = await settings.getAIProvider();
   final apiKey = await settings.getApiKeyForProvider(provider);
+  final backupApiKey = provider == AIProvider.gemini
+      ? await settings.getGeminiBackupApiKey()
+      : null;
+  final backupModel = provider == AIProvider.gemini
+      ? await settings.getFallbackModel()
+      : null;
   final model = await settings.getAIModel();
-  return AIService(apiKey: apiKey ?? '', model: model, provider: provider);
+  return AIService(
+    apiKey: apiKey ?? '',
+    backupApiKey: backupApiKey,
+    backupModel: backupModel,
+    model: model,
+    provider: provider,
+  );
 }
 
 @Riverpod(keepAlive: true)

@@ -14,6 +14,8 @@ class ManualEntrySection extends StatelessWidget {
     this.correctionController,
     this.durationController,
     this.reasoning,
+    this.aiRequestLabel,
+    this.isApplyingAiCorrection = false,
     required this.selectedIcon,
     required this.selectedDate,
     required this.selectedTime,
@@ -32,6 +34,8 @@ class ManualEntrySection extends StatelessWidget {
   final TextEditingController? correctionController;
   final TextEditingController? durationController;
   final String? reasoning;
+  final String? aiRequestLabel;
+  final bool isApplyingAiCorrection;
   final String selectedIcon;
   final DateTime selectedDate;
   final TimeOfDay selectedTime;
@@ -76,6 +80,21 @@ class ManualEntrySection extends StatelessWidget {
           ),
           const Gap(8),
           Text(reasoning!.trim()),
+          if (aiRequestLabel?.trim().isNotEmpty == true) ...[
+            const Gap(8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16),
+                const Gap(6),
+                Expanded(
+                  child: Text(
+                    aiRequestLabel!.trim(),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
         if (!isExercise &&
             isEditing &&
@@ -94,9 +113,18 @@ class ManualEntrySection extends StatelessWidget {
           ),
           const Gap(12),
           FilledButton.icon(
-            onPressed: onApplyAiCorrection,
-            icon: const Icon(Icons.auto_fix_high),
-            label: const Text('Apply AI Correction'),
+            onPressed: isApplyingAiCorrection ? null : onApplyAiCorrection,
+            icon: isApplyingAiCorrection
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_fix_high),
+            label: Text(
+              isApplyingAiCorrection
+                  ? 'Updating with AI...'
+                  : 'Apply AI Correction',
+            ),
           ),
         ],
         const Gap(24),

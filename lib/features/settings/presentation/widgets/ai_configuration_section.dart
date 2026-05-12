@@ -9,6 +9,7 @@ class AIConfigurationSection extends StatelessWidget {
     super.key,
     required this.provider,
     required this.apiKeyController,
+    required this.geminiBackupApiKeyController,
     required this.customModelController,
     required this.selectedModel,
     this.fallbackModel,
@@ -22,6 +23,7 @@ class AIConfigurationSection extends StatelessWidget {
   });
   final AIProvider provider;
   final TextEditingController apiKeyController;
+  final TextEditingController geminiBackupApiKeyController;
   final TextEditingController customModelController;
   final String selectedModel;
   final String? fallbackModel;
@@ -193,6 +195,11 @@ class AIConfigurationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasConfiguredKey =
+        apiKeyController.text.trim().isNotEmpty ||
+        (provider == AIProvider.gemini &&
+            geminiBackupApiKeyController.text.trim().isNotEmpty);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -217,7 +224,39 @@ class AIConfigurationSection extends StatelessWidget {
           ),
           obscureText: true,
         ),
-        if (apiKeyController.text.isEmpty) ...[
+        if (provider == AIProvider.gemini) ...[
+          const Gap(8),
+          TextField(
+            controller: geminiBackupApiKeyController,
+            decoration: const InputDecoration(
+              labelText: 'Backup Gemini API Key',
+              border: OutlineInputBorder(),
+              hintText: 'Used if primary Gemini key fails',
+            ),
+            obscureText: true,
+          ),
+          if (geminiBackupApiKeyController.text.trim().isNotEmpty) ...[
+            const Gap(6),
+            Row(
+              children: [
+                Icon(
+                  Icons.check_circle_outline,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const Gap(6),
+                Text(
+                  'Backup Gemini key configured',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+        if (!hasConfiguredKey) ...[
           const Gap(8),
           SizedBox(
             width: double.infinity,
@@ -280,8 +319,12 @@ class AIConfigurationSection extends StatelessWidget {
           const Gap(16),
           _buildModelDropdown(
             context: context,
-            label: 'Fallback Model (Optional)',
-            helperText: 'Used if the primary model fails',
+            label: provider == AIProvider.gemini
+                ? 'Backup Gemini Model (Optional)'
+                : 'Fallback Model (Optional)',
+            helperText: provider == AIProvider.gemini
+                ? 'Used with the backup Gemini API key if the primary request fails'
+                : 'Used if the primary model fails',
             hintText: 'None',
             value: fallbackModel,
             includeNone: true,

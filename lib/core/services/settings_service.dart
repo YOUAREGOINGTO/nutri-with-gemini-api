@@ -16,6 +16,7 @@ class SettingsService {
   static const _profileId = 1;
   static const _prefAIProvider = 'ai_provider';
   static const _prefGeminiApiKey = 'gemini_api_key';
+  static const _geminiBackupApiKeyId = 'gemini_backup';
   static const _providerModelSeparator = ':';
 
   Future<({String deviceId, int now})> _audit() async {
@@ -34,6 +35,24 @@ class SettingsService {
 
   Future<String?> getOpenRouterApiKey() async {
     return getApiKeyForProvider(AIProvider.openRouter);
+  }
+
+  Future<void> saveGeminiBackupApiKey(String key) async {
+    final keys = _decodeApiKeys((await _settings())?.apiKey);
+    final normalized = key.trim();
+    if (normalized.isEmpty) {
+      keys.remove(_geminiBackupApiKeyId);
+    } else {
+      keys[_geminiBackupApiKeyId] = normalized;
+    }
+
+    await _updateSettings(apiKey: Value(_encodeApiKeys(keys)));
+  }
+
+  Future<String?> getGeminiBackupApiKey() async {
+    final keys = _decodeApiKeys((await _settings())?.apiKey);
+    final key = keys[_geminiBackupApiKeyId];
+    return key?.isNotEmpty == true ? key : null;
   }
 
   Future<void> saveApiKeyForProvider(AIProvider provider, String key) async {

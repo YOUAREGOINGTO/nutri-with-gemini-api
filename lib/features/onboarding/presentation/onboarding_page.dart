@@ -320,6 +320,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         return AIConfigurationSection(
           provider: state.provider,
           apiKeyController: _formManager.apiKeyController,
+          geminiBackupApiKeyController:
+              _formManager.geminiBackupApiKeyController,
           customModelController: _formManager.customModelController,
           selectedModel: state.selectedModel,
           fallbackModel: state.fallbackModel,

@@ -49,6 +49,8 @@ class AIService {
   AIService({
     required this.apiKey,
     required this.model,
+    this.backupApiKey,
+    this.backupModel,
     this.provider = AIProvider.openRouter,
   });
 
@@ -59,10 +61,14 @@ class AIService {
 
   final String apiKey;
   final String model;
+  final String? backupApiKey;
+  final String? backupModel;
   final AIProvider provider;
 
   // Track active clients for cancellation
   final Map<String, http.Client> _activeRequests = {};
+
+  bool get hasUsableApiKey => _hasUsableApiKey;
 
   static Future<List<GeminiModelDescriptor>> listGeminiModels({
     required String apiKey,
@@ -345,7 +351,7 @@ Calculate calories based on the user profile provided and standard MET values.
     String? modelOverride,
     String? requestId,
   }) async {
-    if (apiKey.isEmpty) {
+    if (!_hasUsableApiKey) {
       throw Exception('API Key is missing');
     }
 
@@ -362,7 +368,7 @@ Calculate calories based on the user profile provided and standard MET values.
           messages: messages,
           modelOverride: modelOverride,
         ),
-        AIProvider.gemini => _geminiGenerateContent(
+        AIProvider.gemini => _geminiGenerateContentWithKeyFallback(
           client: client,
           messages: messages,
           modelOverride: modelOverride,
@@ -382,6 +388,12 @@ Calculate calories based on the user profile provided and standard MET values.
       }
       client.close();
     }
+  }
+
+  bool get _hasUsableApiKey {
+    if (apiKey.trim().isNotEmpty) return true;
+    return provider == AIProvider.gemini &&
+        (backupApiKey?.trim().isNotEmpty ?? false);
   }
 
   Future<Map<String, dynamic>> _openRouterChatCompletion({
@@ -413,6 +425,7 @@ Calculate calories based on the user profile provided and standard MET values.
   Future<Map<String, dynamic>> _geminiGenerateContent({
     required http.Client client,
     required List<Map<String, dynamic>> messages,
+    required String apiKeyOverride,
     String? modelOverride,
   }) async {
     final selectedModel = _normalizeGeminiModel(modelOverride ?? model);
@@ -424,7 +437,7 @@ Calculate calories based on the user profile provided and standard MET values.
 
     final uri = Uri.parse(
       '$_geminiBaseUrl/models/$selectedModel:generateContent',
-    ).replace(queryParameters: {'key': apiKey});
+    ).replace(queryParameters: {'key': apiKeyOverride});
 
     final response = await client.post(
       uri,
@@ -444,6 +457,91 @@ Calculate calories based on the user profile provided and standard MET values.
       throw Exception('Gemini returned an empty response');
     }
     return jsonDecode(_extractJson(content));
+  }
+
+  Future<Map<String, dynamic>> _geminiGenerateContentWithKeyFallback({
+    required http.Client client,
+    required List<Map<String, dynamic>> messages,
+    String? modelOverride,
+  }) async {
+    final primaryKey = apiKey.trim();
+    final fallbackKey = backupApiKey?.trim() ?? '';
+    final primaryModel = modelOverride ?? model;
+    final fallbackModel = backupModel?.trim().isNotEmpty == true
+        ? backupModel!.trim()
+        : primaryModel;
+
+    if (primaryKey.isEmpty) {
+      final result = await _geminiGenerateContent(
+        client: client,
+        messages: messages,
+        apiKeyOverride: fallbackKey,
+        modelOverride: fallbackModel,
+      );
+      return _withAiRequestMetadata(
+        result,
+        keySource: 'backup',
+        modelId: _normalizeGeminiModel(fallbackModel),
+        modelSource: fallbackModel == primaryModel ? 'primary' : 'backup',
+      );
+    }
+
+    try {
+      final result = await _geminiGenerateContent(
+        client: client,
+        messages: messages,
+        apiKeyOverride: primaryKey,
+        modelOverride: primaryModel,
+      );
+      return _withAiRequestMetadata(
+        result,
+        keySource: 'primary',
+        modelId: _normalizeGeminiModel(primaryModel),
+        modelSource: 'primary',
+      );
+    } catch (primaryError) {
+      if (_looksLikeClientException(primaryError)) {
+        rethrow;
+      }
+      if (fallbackKey.isEmpty || fallbackKey == primaryKey) {
+        rethrow;
+      }
+
+      debugPrint('Gemini primary key failed, retrying backup key: $primaryError');
+      try {
+        final result = await _geminiGenerateContent(
+          client: client,
+          messages: messages,
+          apiKeyOverride: fallbackKey,
+          modelOverride: fallbackModel,
+        );
+        return _withAiRequestMetadata(
+          result,
+          keySource: 'backup',
+          modelId: _normalizeGeminiModel(fallbackModel),
+          modelSource: fallbackModel == primaryModel ? 'primary' : 'backup',
+        );
+      } catch (backupError) {
+        throw Exception(
+          'Gemini primary and backup API keys failed. Primary: $primaryError Backup: $backupError',
+        );
+      }
+    }
+  }
+
+  Map<String, dynamic> _withAiRequestMetadata(
+    Map<String, dynamic> result, {
+    required String keySource,
+    required String modelId,
+    required String modelSource,
+  }) {
+    return {
+      ...result,
+      '_ai_provider': provider.id,
+      '_ai_key_source': keySource,
+      '_ai_model': modelId,
+      '_ai_model_source': modelSource,
+    };
   }
 
   Map<String, dynamic> _geminiSystemInstruction(

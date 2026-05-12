@@ -83,6 +83,7 @@ class SettingsController extends _$SettingsController {
 
   Future<void> loadSettings({
     required void Function(String key) onKeyLoaded,
+    required void Function(String key) onGeminiBackupKeyLoaded,
     required void Function(String modelId) onCustomModelLoaded,
     required void Function(UserProfile profile) onProfileLoaded,
   }) async {
@@ -99,8 +100,16 @@ class SettingsController extends _$SettingsController {
       onKeyLoaded(key);
     }
 
-    if (provider == AIProvider.gemini && key?.trim().isNotEmpty == true) {
-      await refreshGeminiModels(apiKey: key!);
+    final geminiBackupKey = await settings.getGeminiBackupApiKey();
+    if (geminiBackupKey != null) {
+      onGeminiBackupKeyLoaded(geminiBackupKey);
+    }
+
+    final modelListKey =
+        key?.trim().isNotEmpty == true ? key : geminiBackupKey;
+    if (provider == AIProvider.gemini &&
+        modelListKey?.trim().isNotEmpty == true) {
+      await refreshGeminiModels(apiKey: modelListKey!);
     }
 
     final model = await settings.getAIModel();
@@ -192,6 +201,7 @@ class SettingsController extends _$SettingsController {
 
   Future<void> save({
     required String apiKey,
+    required String geminiBackupApiKey,
     required String customModel,
     required String age,
     required String weight,
@@ -205,6 +215,7 @@ class SettingsController extends _$SettingsController {
       final settings = ref.read(settingsServiceProvider);
       await settings.saveAIProvider(state.provider);
       await settings.saveApiKeyForProvider(state.provider, apiKey.trim());
+      await settings.saveGeminiBackupApiKey(geminiBackupApiKey.trim());
 
       final modelToSave = state.selectedModel == 'custom'
           ? customModel.trim()

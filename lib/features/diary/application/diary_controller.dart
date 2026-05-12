@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:nutrinutri/core/domain/ai_provider.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/domain/user_profile.dart';
 import 'package:nutrinutri/core/providers.dart';
@@ -158,7 +159,9 @@ class DiaryController extends _$DiaryController {
 
     final aiService = await ref.read(aiServiceProvider.future);
     final settingsService = ref.read(settingsServiceProvider);
-    final fallbackModel = await settingsService.getFallbackModel();
+    final fallbackModel = aiService.provider == AIProvider.gemini
+        ? null
+        : await settingsService.getFallbackModel();
     final base64Images = await _imagesToBase64(entry.imagePaths);
 
     try {
@@ -212,7 +215,9 @@ class DiaryController extends _$DiaryController {
   Future<void> _analyzeAndFill(DiaryEntry entry) async {
     final aiService = await ref.read(aiServiceProvider.future);
     final settingsService = ref.read(settingsServiceProvider);
-    final fallbackModel = await settingsService.getFallbackModel();
+    final fallbackModel = aiService.provider == AIProvider.gemini
+        ? null
+        : await settingsService.getFallbackModel();
     final userProfile = await settingsService.getUserProfile();
     final base64Images = await _imagesToBase64(entry.imagePaths);
 
@@ -256,6 +261,10 @@ class DiaryController extends _$DiaryController {
     DiaryEntry entry,
     Map<String, dynamic> result,
   ) async {
+    final aiProvider = _stringValue(result['_ai_provider']);
+    final aiKeySource = _stringValue(result['_ai_key_source']);
+    final aiModel = _stringValue(result['_ai_model']);
+    final aiModelSource = _stringValue(result['_ai_model_source']);
     final normalizedResult = entry.type == EntryType.food
         ? _normalizeFoodResult(result)
         : result;
@@ -293,7 +302,16 @@ class DiaryController extends _$DiaryController {
             entryId: entry.id,
             role: 'assistant',
             content: updatedEntry.reasoning ?? '',
-            metadataJson: jsonEncode({'ai_result': normalizedResult}),
+            metadataJson: jsonEncode({
+              'ai_result': normalizedResult,
+              if (aiProvider != null || aiKeySource != null)
+                'ai_request': {
+                  if (aiProvider != null) 'provider': aiProvider,
+                  if (aiKeySource != null) 'key_source': aiKeySource,
+                  if (aiModel != null) 'model': aiModel,
+                  if (aiModelSource != null) 'model_source': aiModelSource,
+                },
+            }),
           );
     }
     _invalidateDay(entry.timestamp);

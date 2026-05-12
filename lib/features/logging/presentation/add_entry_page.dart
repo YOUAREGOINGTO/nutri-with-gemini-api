@@ -1,9 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nutrinutri/core/providers.dart';
 import 'package:nutrinutri/core/widgets/responsive_center.dart';
 import 'package:nutrinutri/features/diary/domain/diary_entry.dart';
 import 'package:nutrinutri/features/logging/presentation/add_entry_controller.dart';
@@ -26,6 +29,8 @@ class AddEntryPage extends ConsumerStatefulWidget {
 
 class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   late final AddEntryFormManager _formManager;
+  bool _isApplyingAiCorrection = false;
+  String? _aiRequestLabel;
 
   @override
   void initState() {
@@ -40,6 +45,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     if (widget.existingEntry != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _formManager.initializeWithEntry(widget.existingEntry!);
+        unawaited(_loadAiRequestLabel(widget.existingEntry!.id));
       });
     } else {
       // Initialize with type
@@ -107,6 +113,38 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     }
   }
 
+  Future<void> _loadAiRequestLabel(String entryId) async {
+    final chats = await ref.read(diaryServiceProvider).getChatMessages(entryId);
+    String? label;
+    for (final chat in chats.reversed) {
+      final rawMetadata = chat.metadataJson;
+      if (chat.role != 'assistant' || rawMetadata == null) continue;
+
+      try {
+        final metadata = jsonDecode(rawMetadata);
+        if (metadata is! Map) continue;
+        final request = metadata['ai_request'];
+        if (request is! Map) continue;
+        final provider = request['provider']?.toString();
+        final keySource = request['key_source']?.toString();
+        if (provider != 'gemini' || keySource != 'backup') continue;
+
+        final model = request['model']?.toString();
+        final modelSource = request['model_source']?.toString();
+        label = modelSource == 'backup'
+            ? 'Gemini backup key and backup model used${model == null ? '' : ': $model'}'
+            : 'Gemini backup key used${model == null ? '' : ': $model'}';
+        break;
+      } catch (_) {
+        continue;
+      }
+    }
+
+    if (mounted) {
+      setState(() => _aiRequestLabel = label);
+    }
+  }
+
   Future<void> _applyAiCorrection() async {
     final entry = widget.existingEntry;
     if (entry == null) return;
@@ -118,6 +156,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     }
 
     try {
+      setState(() => _isApplyingAiCorrection = true);
       await _formManager.applyAiCorrection(entry);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -130,6 +169,10 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('AI correction failed: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isApplyingAiCorrection = false);
       }
     }
   }
@@ -215,6 +258,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   correctionController: _formManager.correctionController,
                   durationController: _formManager.durationController,
                   reasoning: widget.existingEntry?.reasoning,
+                  aiRequestLabel: _aiRequestLabel,
+                  isApplyingAiCorrection: _isApplyingAiCorrection,
                   selectedIcon: state.selectedIcon,
                   selectedDate: state.selectedDate,
                   selectedTime: state.selectedTime,

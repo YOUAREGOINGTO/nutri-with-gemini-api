@@ -9,6 +9,7 @@ import 'package:nutrinutri/features/settings/presentation/settings_controller.da
 class SettingsFormManager {
   SettingsFormManager({required this.ref, required this.onStateChanged}) {
     apiKeyController.addListener(onStateChanged);
+    geminiBackupApiKeyController.addListener(onStateChanged);
     customModelController.addListener(onStateChanged);
     ageController.addListener(_calculateRecommendedCalories);
     weightController.addListener(_calculateRecommendedCalories);
@@ -18,6 +19,7 @@ class SettingsFormManager {
   final VoidCallback onStateChanged;
 
   final apiKeyController = TextEditingController();
+  final geminiBackupApiKeyController = TextEditingController();
   final customModelController = TextEditingController();
   final ageController = TextEditingController();
   final weightController = TextEditingController();
@@ -38,6 +40,7 @@ class SettingsFormManager {
 
   void dispose() {
     apiKeyController.dispose();
+    geminiBackupApiKeyController.dispose();
     customModelController.dispose();
     ageController.dispose();
     weightController.dispose();
@@ -52,6 +55,8 @@ class SettingsFormManager {
         .read(settingsControllerProvider.notifier)
         .loadSettings(
           onKeyLoaded: (key) => apiKeyController.text = key,
+          onGeminiBackupKeyLoaded: (key) =>
+              geminiBackupApiKeyController.text = key,
           onCustomModelLoaded: (model) => customModelController.text = model,
           onProfileLoaded: (UserProfile profile) {
             ageController.text = profile.age.toString();
@@ -82,19 +87,29 @@ class SettingsFormManager {
         .read(settingsServiceProvider)
         .getApiKeyForProvider(provider);
     apiKeyController.text = key ?? '';
+    final geminiBackupKey = await ref
+        .read(settingsServiceProvider)
+        .getGeminiBackupApiKey();
+    geminiBackupApiKeyController.text = geminiBackupKey ?? '';
     customModelController.clear();
 
-    if (provider == AIProvider.gemini && key?.trim().isNotEmpty == true) {
-      await controller.refreshGeminiModels(apiKey: key!);
+    final modelListKey =
+        key?.trim().isNotEmpty == true ? key : geminiBackupKey;
+    if (provider == AIProvider.gemini &&
+        modelListKey?.trim().isNotEmpty == true) {
+      await controller.refreshGeminiModels(apiKey: modelListKey!);
     }
 
     onStateChanged();
   }
 
   Future<void> refreshGeminiModels() async {
+    final key = apiKeyController.text.trim().isNotEmpty
+        ? apiKeyController.text
+        : geminiBackupApiKeyController.text;
     await ref
         .read(settingsControllerProvider.notifier)
-        .refreshGeminiModels(apiKey: apiKeyController.text);
+        .refreshGeminiModels(apiKey: key);
     onStateChanged();
   }
 
@@ -123,6 +138,7 @@ class SettingsFormManager {
         .read(settingsControllerProvider.notifier)
         .save(
           apiKey: apiKeyController.text,
+          geminiBackupApiKey: geminiBackupApiKeyController.text,
           customModel: customModelController.text,
           age: ageController.text,
           weight: weightController.text,
@@ -147,6 +163,7 @@ class SettingsFormManager {
     final state = ref.read(settingsControllerProvider);
     return Object.hashAll([
       apiKeyController.text,
+      geminiBackupApiKeyController.text,
       state.provider,
       state.selectedModel,
       state.fallbackModel,

@@ -161,7 +161,7 @@ class AddEntryController extends _$AddEntryController {
 
   Future<void> addOptimistic({required String? description}) async {
     final aiService = await ref.read(aiServiceProvider.future);
-    if (aiService.apiKey.isEmpty) {
+    if (!aiService.hasUsableApiKey) {
       throw Exception('Please set your API Key in Settings');
     }
 
