@@ -53,7 +53,7 @@ class AIService {
     this.backupModel,
     this.provider = AIProvider.openRouter,
     http.Client Function()? clientFactory,
-  }) : _clientFactory = clientFactory ?? http.Client;
+  }) : _clientFactory = clientFactory ?? (() => http.Client());
 
   static const String _openRouterBaseUrl =
       'https://openrouter.ai/api/v1/chat/completions';
