@@ -55,20 +55,26 @@ class DiaryController extends _$DiaryController {
     );
 
     await diaryService.addEntry(entry);
+    _invalidateDay(timestamp);
     if (type == EntryType.food) {
-      await diaryService.addChatMessage(
-        entryId: entry.id,
-        role: 'user',
-        content: description?.trim().isNotEmpty == true
-            ? description!.trim()
-            : 'Food log request with ${allImagePaths.length} image(s).',
-        metadataJson: jsonEncode({
-          'kind': 'initial_food_request',
-          'image_paths': allImagePaths,
-        }),
+      unawaited(
+        diaryService
+            .addChatMessage(
+              entryId: entry.id,
+              role: 'user',
+              content: description?.trim().isNotEmpty == true
+                  ? description!.trim()
+                  : 'Food log request with ${allImagePaths.length} image(s).',
+              metadataJson: jsonEncode({
+                'kind': 'initial_food_request',
+                'image_paths': allImagePaths,
+              }),
+            )
+            .catchError((Object error) {
+              debugPrint('Failed to store initial AI chat message: $error');
+            }),
       );
     }
-    _invalidateDay(timestamp);
     unawaited(_analyzeAndFill(entry));
   }
 
@@ -157,15 +163,18 @@ class DiaryController extends _$DiaryController {
     await diaryService.updateEntry(processingEntry);
     _invalidateDay(entry.timestamp);
 
-    final aiService = await ref.read(aiServiceProvider.future);
-    final settingsService = ref.read(settingsServiceProvider);
-    final fallbackModel = aiService.provider == AIProvider.gemini
-        ? null
-        : await settingsService.getFallbackModel();
-    final base64Images = await _imagesToBase64(entry.imagePaths);
+    AIService? aiService;
+    String? fallbackModel;
+    List<String> base64Images = const [];
     Object? lastError;
 
     try {
+      aiService = await ref.read(aiServiceProvider.future);
+      final settingsService = ref.read(settingsServiceProvider);
+      fallbackModel = aiService.provider == AIProvider.gemini
+          ? null
+          : await settingsService.getFallbackModel();
+      base64Images = await _imagesToBase64(entry.imagePaths);
       final result = await _correctEntry(
         aiService: aiService,
         entry: entry,
@@ -179,7 +188,7 @@ class DiaryController extends _$DiaryController {
       lastError = error;
     }
 
-    if (fallbackModel != null && fallbackModel.isNotEmpty) {
+    if (aiService != null && fallbackModel != null && fallbackModel.isNotEmpty) {
       try {
         final result = await _correctEntry(
           aiService: aiService,
@@ -216,16 +225,20 @@ class DiaryController extends _$DiaryController {
   }
 
   Future<void> _analyzeAndFill(DiaryEntry entry) async {
-    final aiService = await ref.read(aiServiceProvider.future);
-    final settingsService = ref.read(settingsServiceProvider);
-    final fallbackModel = aiService.provider == AIProvider.gemini
-        ? null
-        : await settingsService.getFallbackModel();
-    final userProfile = await settingsService.getUserProfile();
-    final base64Images = await _imagesToBase64(entry.imagePaths);
+    AIService? aiService;
+    String? fallbackModel;
+    UserProfile? userProfile;
+    List<String> base64Images = const [];
     Object? lastError;
 
     try {
+      aiService = await ref.read(aiServiceProvider.future);
+      final settingsService = ref.read(settingsServiceProvider);
+      fallbackModel = aiService.provider == AIProvider.gemini
+          ? null
+          : await settingsService.getFallbackModel();
+      userProfile = await settingsService.getUserProfile();
+      base64Images = await _imagesToBase64(entry.imagePaths);
       final result = await _analyzeEntry(
         aiService: aiService,
         entry: entry,
@@ -241,7 +254,7 @@ class DiaryController extends _$DiaryController {
       lastError = error;
     }
 
-    if (fallbackModel != null && fallbackModel.isNotEmpty) {
+    if (aiService != null && fallbackModel != null && fallbackModel.isNotEmpty) {
       try {
         final result = await _analyzeEntry(
           aiService: aiService,
@@ -269,6 +282,7 @@ class DiaryController extends _$DiaryController {
   ) async {
     final aiProvider = _stringValue(result['_ai_provider']);
     final aiKeySource = _stringValue(result['_ai_key_source']);
+    final aiKeyRelation = _stringValue(result['_ai_key_relation']);
     final aiModel = _stringValue(result['_ai_model']);
     final aiModelSource = _stringValue(result['_ai_model_source']);
     final normalizedResult = entry.type == EntryType.food
@@ -307,6 +321,7 @@ class DiaryController extends _$DiaryController {
       final metadata = <String, dynamic>{'ai_result': normalizedResult};
       if (aiProvider != null ||
           aiKeySource != null ||
+          aiKeyRelation != null ||
           aiModel != null ||
           aiModelSource != null) {
         final aiRequest = <String, String>{};
@@ -315,6 +330,9 @@ class DiaryController extends _$DiaryController {
         }
         if (aiKeySource != null) {
           aiRequest['key_source'] = aiKeySource;
+        }
+        if (aiKeyRelation != null) {
+          aiRequest['key_relation'] = aiKeyRelation;
         }
         if (aiModel != null) {
           aiRequest['model'] = aiModel;

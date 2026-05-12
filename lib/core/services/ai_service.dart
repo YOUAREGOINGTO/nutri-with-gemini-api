@@ -348,6 +348,16 @@ Calculate calories based on the user profile provided and standard MET values.
         error.toString().contains('ClientException');
   }
 
+  bool _isCancelledRequest(
+    String? requestId,
+    http.Client client,
+    Object error,
+  ) {
+    return requestId != null &&
+        _looksLikeClientException(error) &&
+        _activeRequests[requestId] != client;
+  }
+
   Future<Map<String, dynamic>> _chatCompletion({
     required List<Map<String, dynamic>> messages,
     String? modelOverride,
@@ -374,12 +384,11 @@ Calculate calories based on the user profile provided and standard MET values.
           client: client,
           messages: messages,
           modelOverride: modelOverride,
+          requestId: requestId,
         ),
       };
     } catch (e) {
-      if (requestId != null &&
-          _looksLikeClientException(e) &&
-          _activeRequests[requestId] != client) {
+      if (_isCancelledRequest(requestId, client, e)) {
         throw Exception('Request cancelled');
       }
       debugPrint('AI Service Error: $e');
@@ -465,6 +474,7 @@ Calculate calories based on the user profile provided and standard MET values.
     required http.Client client,
     required List<Map<String, dynamic>> messages,
     String? modelOverride,
+    String? requestId,
   }) async {
     final primaryKey = apiKey.trim();
     final fallbackKey = backupApiKey?.trim() ?? '';
@@ -472,6 +482,11 @@ Calculate calories based on the user profile provided and standard MET values.
     final fallbackModel = backupModel?.trim().isNotEmpty == true
         ? backupModel!.trim()
         : primaryModel;
+    final fallbackKeyRelation = fallbackKey.isEmpty
+        ? 'missing'
+        : fallbackKey == primaryKey
+        ? 'same_as_primary'
+        : 'different_from_primary';
 
     if (primaryKey.isEmpty) {
       final result = await _geminiGenerateContent(
@@ -485,6 +500,7 @@ Calculate calories based on the user profile provided and standard MET values.
         keySource: 'backup',
         modelId: _normalizeGeminiModel(fallbackModel),
         modelSource: fallbackModel == primaryModel ? 'primary' : 'backup',
+        keyRelation: 'backup_only',
       );
     }
 
@@ -500,14 +516,20 @@ Calculate calories based on the user profile provided and standard MET values.
         keySource: 'primary',
         modelId: _normalizeGeminiModel(primaryModel),
         modelSource: 'primary',
+        keyRelation: fallbackKeyRelation,
       );
     } catch (primaryError) {
-      if (_looksLikeClientException(primaryError)) {
+      if (_isCancelledRequest(requestId, client, primaryError)) {
         rethrow;
       }
       final hasBackupModel = fallbackModel != primaryModel;
-      if (!hasBackupModel && (fallbackKey.isEmpty || fallbackKey == primaryKey)) {
-        rethrow;
+      final hasDistinctBackupKey =
+          fallbackKey.isNotEmpty && fallbackKey != primaryKey;
+      if (!hasBackupModel && !hasDistinctBackupKey) {
+        throw Exception(
+          'Gemini primary failed and no distinct backup key or backup model is configured. '
+          'Backup key relation: $fallbackKeyRelation. Primary: $primaryError',
+        );
       }
 
       final retryKey = fallbackKey.isEmpty ? primaryKey : fallbackKey;
@@ -515,7 +537,8 @@ Calculate calories based on the user profile provided and standard MET values.
 
       debugPrint(
         'Gemini primary request failed, retrying with '
-        '$retryKeySource key and $fallbackModel: $primaryError',
+        '$retryKeySource key and $fallbackModel '
+        '(key relation: $fallbackKeyRelation): $primaryError',
       );
       try {
         final result = await _geminiGenerateContent(
@@ -529,10 +552,14 @@ Calculate calories based on the user profile provided and standard MET values.
           keySource: retryKeySource,
           modelId: _normalizeGeminiModel(fallbackModel),
           modelSource: fallbackModel == primaryModel ? 'primary' : 'backup',
+          keyRelation: fallbackKeyRelation,
         );
       } catch (backupError) {
+        if (_isCancelledRequest(requestId, client, backupError)) {
+          rethrow;
+        }
         throw Exception(
-          'Gemini primary and backup API keys failed. Primary: $primaryError Backup: $backupError',
+          'Gemini backup was attempted but also failed. Backup: $backupError Primary: $primaryError',
         );
       }
     }
@@ -543,11 +570,13 @@ Calculate calories based on the user profile provided and standard MET values.
     required String keySource,
     required String modelId,
     required String modelSource,
+    String? keyRelation,
   }) {
     return {
       ...result,
       '_ai_provider': provider.id,
       '_ai_key_source': keySource,
+      if (keyRelation != null) '_ai_key_relation': keyRelation,
       '_ai_model': modelId,
       '_ai_model_source': modelSource,
     };

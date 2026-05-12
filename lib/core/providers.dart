@@ -50,7 +50,7 @@ Future<AIService> aiService(Ref ref) async {
       ? await settings.getGeminiBackupApiKey()
       : null;
   final backupModel = provider == AIProvider.gemini
-      ? await settings.getFallbackModel()
+      ? await settings.getFallbackModelForProvider(provider)
       : null;
   final model = await settings.getAIModel();
   return AIService(

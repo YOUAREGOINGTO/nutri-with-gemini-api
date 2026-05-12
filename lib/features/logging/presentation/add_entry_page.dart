@@ -132,6 +132,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
         if (request is! Map) break;
         final provider = request['provider']?.toString();
         final keySource = request['key_source']?.toString();
+        final keyRelation = request['key_relation']?.toString();
         final modelSource = request['model_source']?.toString();
         if (provider != 'gemini' ||
             (keySource != 'backup' && modelSource != 'backup')) {
@@ -140,7 +141,9 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
 
         final model = request['model']?.toString();
         final modelSuffix = model == null ? '' : ': $model';
-        if (keySource == 'backup' && modelSource == 'backup') {
+        if (keyRelation == 'same_as_primary' && modelSource == 'backup') {
+          label = 'Gemini backup model used with primary key$modelSuffix';
+        } else if (keySource == 'backup' && modelSource == 'backup') {
           label = 'Gemini backup key and backup model used$modelSuffix';
         } else if (keySource == 'backup') {
           label = 'Gemini backup key used$modelSuffix';

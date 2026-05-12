@@ -84,11 +84,16 @@ class SettingsService {
   }
 
   Future<AIProvider> getAIProvider() async {
+    final savedProvider = await _localPref(_prefAIProvider);
+    if (savedProvider?.trim().isNotEmpty == true) {
+      return AIProvider.fromId(savedProvider);
+    }
+
     final settings = await _settings();
     final modelProvider = _providerFromModelSetting(settings?.aiModel);
     if (modelProvider != null) return modelProvider;
 
-    return AIProvider.fromId(await _localPref(_prefAIProvider));
+    return AIProvider.openRouter;
   }
 
   Future<void> saveAIModel(String model) async {
@@ -101,17 +106,30 @@ class SettingsService {
 
   Future<String> getAIModel() async {
     final settings = await _settings();
-    final provider =
-        _providerFromModelSetting(settings?.aiModel) ??
-        AIProvider.fromId(await _localPref(_prefAIProvider));
     final rawModel = settings?.aiModel;
-    return rawModel == null
-        ? provider.defaultModel
-        : _modelFromSetting(rawModel);
+    final savedProvider = await _localPref(_prefAIProvider);
+    final explicitProvider = savedProvider?.trim().isNotEmpty == true
+        ? AIProvider.fromId(savedProvider)
+        : null;
+    final modelProvider = _providerFromModelSetting(rawModel);
+    final provider = explicitProvider ?? modelProvider ?? AIProvider.openRouter;
+
+    if (rawModel == null) return provider.defaultModel;
+    if (modelProvider != null && modelProvider != provider) {
+      return provider.defaultModel;
+    }
+
+    return _modelFromSetting(rawModel);
   }
 
   Future<void> saveFallbackModel(String? model) async {
-    final provider = await getAIProvider();
+    await saveFallbackModelForProvider(await getAIProvider(), model);
+  }
+
+  Future<void> saveFallbackModelForProvider(
+    AIProvider provider,
+    String? model,
+  ) async {
     final normalized = model?.trim();
     await _updateSettings(
       fallbackModel: Value(
@@ -123,12 +141,20 @@ class SettingsService {
   }
 
   Future<String?> getFallbackModel() async {
+    return getFallbackModelForProvider(await getAIProvider());
+  }
+
+  Future<String?> getFallbackModelForProvider(AIProvider provider) async {
     final settings = await _settings();
     final rawModel = settings?.fallbackModel;
     if (rawModel == null) return null;
 
     final fallbackProvider = _providerFromModelSetting(rawModel);
-    if (fallbackProvider != null && fallbackProvider != await getAIProvider()) {
+    if (fallbackProvider != null && fallbackProvider != provider) {
+      return null;
+    }
+
+    if (fallbackProvider == null && provider != await getAIProvider()) {
       return null;
     }
 

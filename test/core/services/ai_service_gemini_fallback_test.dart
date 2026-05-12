@@ -80,9 +80,92 @@ void main() {
     expect(requests, hasLength(2));
     expect(result['_ai_provider'], AIProvider.gemini.id);
     expect(result['_ai_key_source'], 'backup');
+    expect(result['_ai_key_relation'], 'different_from_primary');
     expect(result['_ai_model_source'], 'backup');
     expect(result['_ai_model'], 'gemini-3-flash-preview');
     expect(result['metrics'], isA<Map>());
+  });
+
+  test('Gemini retries backup key and backup model after primary 429', () async {
+    final requests = <Uri>[];
+    final client = MockClient((request) async {
+      requests.add(request.url);
+      final model = request.url.pathSegments
+          .firstWhere((segment) => segment.endsWith(':generateContent'))
+          .replaceFirst(':generateContent', '');
+      final key = request.url.queryParameters['key'];
+
+      if (model == 'gemini-3.1-pro-preview') {
+        return http.Response(
+          jsonEncode({
+            'error': {
+              'code': 429,
+              'message': 'Resource exhausted. Please try again later.',
+              'status': 'RESOURCE_EXHAUSTED',
+            },
+          }),
+          429,
+        );
+      }
+
+      expect(model, 'gemini-3-flash-preview');
+      expect(key, 'backup-key');
+      return http.Response(
+        jsonEncode({
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {
+                    'text': jsonEncode({
+                      'food_name': 'Curd rice',
+                      'estimated_quantity': '1 bowl',
+                      'reasoning':
+                          'Estimated as one standard bowl of curd rice with typical rice, curd, and light tempering.',
+                      'metrics': {
+                        'calories': 250,
+                        'carbs': 38,
+                        'sugars': 4,
+                        'fats': 7,
+                        'saturated_fats': 3,
+                        'protein': 8,
+                        'fiber': 1,
+                        'sodium': 300,
+                        'caffeine': 0,
+                        'water': 0,
+                      },
+                      'icon': 'rice_bowl',
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        200,
+      );
+    });
+
+    final service = AIService(
+      apiKey: 'primary-key',
+      backupApiKey: 'backup-key',
+      model: 'gemini-3.1-pro-preview',
+      backupModel: 'gemini-3-flash-preview',
+      provider: AIProvider.gemini,
+      clientFactory: () => client,
+    );
+
+    final result = await service.analyzeFood(textDescription: 'one curd rice');
+
+    expect(requests, hasLength(2));
+    expect(requests.first.path, contains('gemini-3.1-pro-preview'));
+    expect(requests.last.path, contains('gemini-3-flash-preview'));
+    expect(result['_ai_provider'], AIProvider.gemini.id);
+    expect(result['_ai_key_source'], 'backup');
+    expect(result['_ai_key_relation'], 'different_from_primary');
+    expect(result['_ai_model_source'], 'backup');
+    expect(result['_ai_model'], 'gemini-3-flash-preview');
+    expect(result['food_name'], 'Curd rice');
   });
 
   test('Gemini falls back to backup model and optional backup key', () async {

@@ -195,10 +195,16 @@ class AIConfigurationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryGeminiKey = apiKeyController.text.trim();
+    final backupGeminiKey = geminiBackupApiKeyController.text.trim();
+    final hasBackupGeminiKey = backupGeminiKey.isNotEmpty;
+    final backupKeyMatchesPrimary =
+        provider == AIProvider.gemini &&
+        primaryGeminiKey.isNotEmpty &&
+        backupGeminiKey == primaryGeminiKey;
     final hasConfiguredKey =
-        apiKeyController.text.trim().isNotEmpty ||
-        (provider == AIProvider.gemini &&
-            geminiBackupApiKeyController.text.trim().isNotEmpty);
+        primaryGeminiKey.isNotEmpty ||
+        (provider == AIProvider.gemini && hasBackupGeminiKey);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -235,21 +241,31 @@ class AIConfigurationSection extends StatelessWidget {
             ),
             obscureText: true,
           ),
-          if (geminiBackupApiKeyController.text.trim().isNotEmpty) ...[
+          if (hasBackupGeminiKey) ...[
             const Gap(6),
             Row(
               children: [
                 Icon(
-                  Icons.check_circle_outline,
+                  backupKeyMatchesPrimary
+                      ? Icons.warning_amber_outlined
+                      : Icons.check_circle_outline,
                   size: 16,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: backupKeyMatchesPrimary
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.primary,
                 ),
                 const Gap(6),
-                Text(
-                  'Backup Gemini key configured',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontSize: 12,
+                Expanded(
+                  child: Text(
+                    backupKeyMatchesPrimary
+                        ? 'Backup Gemini key matches primary key'
+                        : 'Backup Gemini key differs from primary key',
+                    style: TextStyle(
+                      color: backupKeyMatchesPrimary
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.primary,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],

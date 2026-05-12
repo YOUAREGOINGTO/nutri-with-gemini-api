@@ -115,7 +115,7 @@ class SettingsController extends _$SettingsController {
     final model = await settings.getAIModel();
     _selectStoredModel(model, onCustomModelLoaded);
 
-    final fallback = await settings.getFallbackModel();
+    final fallback = await settings.getFallbackModelForProvider(provider);
     if (fallback != null && _isKnownModel(fallback)) {
       state = state.copyWith(fallbackModel: fallback);
     }
@@ -224,7 +224,10 @@ class SettingsController extends _$SettingsController {
         await settings.saveAIModelForProvider(state.provider, modelToSave);
       }
 
-      await settings.saveFallbackModel(state.fallbackModel);
+      await settings.saveFallbackModelForProvider(
+        state.provider,
+        state.fallbackModel,
+      );
 
       final parsedAge = int.tryParse(age.trim());
       final parsedWeight = _parseGoal(weight);
