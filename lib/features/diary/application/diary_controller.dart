@@ -298,20 +298,32 @@ class DiaryController extends _$DiaryController {
 
     await ref.read(diaryServiceProvider).updateEntry(updatedEntry);
     if (entry.type == EntryType.food) {
+      final metadata = <String, dynamic>{'ai_result': normalizedResult};
+      if (aiProvider != null ||
+          aiKeySource != null ||
+          aiModel != null ||
+          aiModelSource != null) {
+        final aiRequest = <String, String>{};
+        if (aiProvider != null) {
+          aiRequest['provider'] = aiProvider;
+        }
+        if (aiKeySource != null) {
+          aiRequest['key_source'] = aiKeySource;
+        }
+        if (aiModel != null) {
+          aiRequest['model'] = aiModel;
+        }
+        if (aiModelSource != null) {
+          aiRequest['model_source'] = aiModelSource;
+        }
+        metadata['ai_request'] = aiRequest;
+      }
+
       await ref.read(diaryServiceProvider).addChatMessage(
             entryId: entry.id,
             role: 'assistant',
             content: updatedEntry.reasoning ?? '',
-            metadataJson: jsonEncode({
-              'ai_result': normalizedResult,
-              if (aiProvider != null || aiKeySource != null)
-                'ai_request': {
-                  if (aiProvider != null) 'provider': aiProvider,
-                  if (aiKeySource != null) 'key_source': aiKeySource,
-                  if (aiModel != null) 'model': aiModel,
-                  if (aiModelSource != null) 'model_source': aiModelSource,
-                },
-            }),
+            metadataJson: jsonEncode(metadata),
           );
     }
     _invalidateDay(entry.timestamp);
