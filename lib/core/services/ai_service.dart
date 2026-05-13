@@ -572,14 +572,17 @@ Calculate calories based on the user profile provided and standard MET values.
     required String modelSource,
     String? keyRelation,
   }) {
-    return {
+    final resultWithMetadata = <String, dynamic>{
       ...result,
       '_ai_provider': provider.id,
       '_ai_key_source': keySource,
-      if (keyRelation != null) '_ai_key_relation': keyRelation,
       '_ai_model': modelId,
       '_ai_model_source': modelSource,
     };
+    if (keyRelation != null) {
+      resultWithMetadata['_ai_key_relation'] = keyRelation;
+    }
+    return resultWithMetadata;
   }
 
   Map<String, dynamic> _geminiSystemInstruction(

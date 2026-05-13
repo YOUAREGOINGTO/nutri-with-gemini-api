@@ -169,14 +169,15 @@ class DiaryController extends _$DiaryController {
     Object? lastError;
 
     try {
-      aiService = await ref.read(aiServiceProvider.future);
+      final service = await ref.read(aiServiceProvider.future);
+      aiService = service;
       final settingsService = ref.read(settingsServiceProvider);
-      fallbackModel = aiService.provider == AIProvider.gemini
+      fallbackModel = service.provider == AIProvider.gemini
           ? null
           : await settingsService.getFallbackModel();
       base64Images = await _imagesToBase64(entry.imagePaths);
       final result = await _correctEntry(
-        aiService: aiService,
+        aiService: service,
         entry: entry,
         correctionMessage: message,
         base64Images: base64Images,
@@ -188,14 +189,16 @@ class DiaryController extends _$DiaryController {
       lastError = error;
     }
 
-    if (aiService != null && fallbackModel != null && fallbackModel.isNotEmpty) {
+    final retryService = aiService;
+    final retryModel = fallbackModel;
+    if (retryService != null && retryModel != null && retryModel.isNotEmpty) {
       try {
         final result = await _correctEntry(
-          aiService: aiService,
+          aiService: retryService,
           entry: entry,
           correctionMessage: message,
           base64Images: base64Images,
-          modelOverride: fallbackModel,
+          modelOverride: retryModel,
         );
         await _updateSuccess(entry, result);
         return;
@@ -232,15 +235,16 @@ class DiaryController extends _$DiaryController {
     Object? lastError;
 
     try {
-      aiService = await ref.read(aiServiceProvider.future);
+      final service = await ref.read(aiServiceProvider.future);
+      aiService = service;
       final settingsService = ref.read(settingsServiceProvider);
-      fallbackModel = aiService.provider == AIProvider.gemini
+      fallbackModel = service.provider == AIProvider.gemini
           ? null
           : await settingsService.getFallbackModel();
       userProfile = await settingsService.getUserProfile();
       base64Images = await _imagesToBase64(entry.imagePaths);
       final result = await _analyzeEntry(
-        aiService: aiService,
+        aiService: service,
         entry: entry,
         userProfile: userProfile,
         base64Images: base64Images,
@@ -254,14 +258,16 @@ class DiaryController extends _$DiaryController {
       lastError = error;
     }
 
-    if (aiService != null && fallbackModel != null && fallbackModel.isNotEmpty) {
+    final retryService = aiService;
+    final retryModel = fallbackModel;
+    if (retryService != null && retryModel != null && retryModel.isNotEmpty) {
       try {
         final result = await _analyzeEntry(
-          aiService: aiService,
+          aiService: retryService,
           entry: entry,
           userProfile: userProfile,
           base64Images: base64Images,
-          modelOverride: fallbackModel,
+          modelOverride: retryModel,
         );
         await _updateSuccess(entry, result);
         return;
