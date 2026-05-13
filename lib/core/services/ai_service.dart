@@ -367,7 +367,7 @@ Calculate calories based on the user profile provided and standard MET values.
       throw Exception('API Key is missing');
     }
 
-    final client = _clientFactory();
+    var client = _clientFactory();
     if (requestId != null) {
       _activeRequests[requestId]?.close(); // Cancel previous if exists
       _activeRequests[requestId] = client;
@@ -385,6 +385,15 @@ Calculate calories based on the user profile provided and standard MET values.
           messages: messages,
           modelOverride: modelOverride,
           requestId: requestId,
+          backupClientFactory: () {
+            final nextClient = _clientFactory();
+            if (requestId != null && _activeRequests[requestId] == client) {
+              _activeRequests[requestId] = nextClient;
+            }
+            client.close();
+            client = nextClient;
+            return nextClient;
+          },
         ),
       };
     } catch (e) {
@@ -473,9 +482,11 @@ Calculate calories based on the user profile provided and standard MET values.
   Future<Map<String, dynamic>> _geminiGenerateContentWithKeyFallback({
     required http.Client client,
     required List<Map<String, dynamic>> messages,
+    required http.Client Function() backupClientFactory,
     String? modelOverride,
     String? requestId,
   }) async {
+    var activeClient = client;
     final primaryKey = apiKey.trim();
     final fallbackKey = backupApiKey?.trim() ?? '';
     final primaryModel = modelOverride ?? model;
@@ -519,7 +530,7 @@ Calculate calories based on the user profile provided and standard MET values.
         keyRelation: fallbackKeyRelation,
       );
     } catch (primaryError) {
-      if (_isCancelledRequest(requestId, client, primaryError)) {
+      if (_isCancelledRequest(requestId, activeClient, primaryError)) {
         rethrow;
       }
       final hasBackupModel = fallbackModel != primaryModel;
@@ -541,8 +552,10 @@ Calculate calories based on the user profile provided and standard MET values.
         '(key relation: $fallbackKeyRelation): $primaryError',
       );
       try {
+        final retryClient = backupClientFactory();
+        activeClient = retryClient;
         final result = await _geminiGenerateContent(
-          client: client,
+          client: retryClient,
           messages: messages,
           apiKeyOverride: retryKey,
           modelOverride: fallbackModel,
@@ -555,7 +568,7 @@ Calculate calories based on the user profile provided and standard MET values.
           keyRelation: fallbackKeyRelation,
         );
       } catch (backupError) {
-        if (_isCancelledRequest(requestId, client, backupError)) {
+        if (_isCancelledRequest(requestId, activeClient, backupError)) {
           rethrow;
         }
         throw Exception(

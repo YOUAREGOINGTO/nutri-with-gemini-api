@@ -10,7 +10,7 @@ import 'package:nutrinutri/core/services/ai_service.dart';
 void main() {
   test('Gemini retries backup key and backup model after primary API error', () async {
     final requests = <Uri>[];
-    final client = MockClient((request) async {
+    Future<http.Response> handler(http.Request request) async {
       requests.add(request.url);
       final model = request.url.pathSegments
           .firstWhere((segment) => segment.endsWith(':generateContent'))
@@ -64,7 +64,7 @@ void main() {
         }),
         200,
       );
-    });
+    }
 
     final service = AIService(
       apiKey: 'primary-key',
@@ -72,7 +72,7 @@ void main() {
       model: 'gemini-3.1-pro-preview',
       backupModel: 'gemini-3-flash-preview',
       provider: AIProvider.gemini,
-      clientFactory: () => client,
+      clientFactory: () => MockClient(handler),
     );
 
     final result = await service.analyzeFood(textDescription: 'one plain idli');
@@ -88,7 +88,7 @@ void main() {
 
   test('Gemini retries backup key and backup model after primary 429', () async {
     final requests = <Uri>[];
-    final client = MockClient((request) async {
+    Future<http.Response> handler(http.Request request) async {
       requests.add(request.url);
       final model = request.url.pathSegments
           .firstWhere((segment) => segment.endsWith(':generateContent'))
@@ -144,7 +144,7 @@ void main() {
         }),
         200,
       );
-    });
+    }
 
     final service = AIService(
       apiKey: 'primary-key',
@@ -152,7 +152,7 @@ void main() {
       model: 'gemini-3.1-pro-preview',
       backupModel: 'gemini-3-flash-preview',
       provider: AIProvider.gemini,
-      clientFactory: () => client,
+      clientFactory: () => MockClient(handler),
     );
 
     final result = await service.analyzeFood(textDescription: 'one curd rice');
