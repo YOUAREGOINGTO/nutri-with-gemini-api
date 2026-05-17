@@ -204,11 +204,16 @@ Rules:
 - Return exactly one JSON object with exactly these top-level keys.
 - All metric values must be JSON numbers, never strings or null.
 - Always include every metrics key.
+- water means plain water or beverage/liquid volume intentionally logged for hydration. Do not estimate intrinsic moisture inside solid foods, rice, curry, raita, dal, gravy, fruits, or cooked food. For solid meals without a logged drink, water should be 0.
 - Do not include confidence, record_type, arrays, comments, or extra keys.
 - User text is the strongest source for quantity.
 - Images identify foods and estimate visible portions. Use all images as foods/drinks the user is logging in one entry by default.
 - Multiple images usually mean multiple consumed foods/drinks or portion evidence for what the user ate.
+- First decide whether the images show distinct foods/drinks, duplicate angles, or before/during/after consumption evidence for the same food. Use before/during/after or leftover images to estimate the consumed amount, not as extra servings.
+- When the user references Image 1, Image 2, Image 3, etc., decide whether they are giving component evidence, close-ups, leftovers, or additional portions. Do not count each referenced image as a separate serving unless the user says additional, extra, another serving, second serving, also ate, or similar.
 - Sum the nutrition across all distinct consumed foods/drinks shown in the provided images, unless the user text narrows the logged amount.
+- If the user says an image, plate, or multiple pictures are my food, what I ate, or similar, include all visible edible components in those images unless the user explicitly says only, just, exclude, not eating, ignore, or similar.
+- Treat named foods in the user text as guidance, not necessarily an exhaustive list, unless restrictive words like only, just, except, not, exclude, or ignore are used.
 - If multiple distinct foods/drinks are logged, combine them into one concise food_name and summarize all quantities in estimated_quantity.
 - Only treat an image as a duplicate angle if the user says it is another angle/the same item, or if it is clearly the exact same food portion from another angle.
 - Do not double count clear duplicate image angles.
@@ -220,6 +225,8 @@ Rules:
 - Before assigning metrics, identify the likely food/drink, consumed quantity, preparation method, and calorie-bearing additions.
 - Use the user region context and visible food cues to make reasonable regional portion and preparation assumptions.
 - Account for visible or strongly implied ingredients such as cooking oil, ghee, butter, sauces, dressings, gravy, added sugar, cream, cheese, nuts, batter, breading, and toppings.
+- For biryani, pulao, fried rice, and rice-dominant Indian meals, the rice portion usually drives calories and carbs. If the visible portion is a full plate or large mound, do not use a small side-rice assumption. Make carbs/calories consistent with the cooked rice quantity stated in estimated_quantity.
+- For Indian thali or mixed plates, estimate each visible component separately: rice, roti, curry/gravy, fried vegetable, salad/legumes, eggs/meat, and sauces. Sum components only after interpreting user text and leftover/progress images. Do not treat curry, fried items, gravy, or restaurant/canteen-style plates as plain or low-oil unless the user says so.
 - If oil, ghee, sauces, or ingredients are uncertain, use a normal moderate assumption for that food and cuisine when the dish clearly implies them. Do not invent sides, toppings, or ingredients that are not visible, named, or typical for the identified item.
 - User text overrides assumptions. If the user says no oil, no sugar, plain, boiled, steamed, baked, or gives an ingredient/quantity correction, follow that.
 - Validate the final numbers before returning JSON. Check that calories roughly match the visible quantity, regional preparation style, cooking fats/additions, and macro totals.
@@ -230,6 +237,7 @@ Rules:
 - For non-food inputs, food_name should describe the item, and reasoning should explain why calories and macros are 0.
 - Do not invent calories for blood tests, documents, medicine labels, random labels, packaging labels without a consumed portion, or other non-food/non-drink inputs.
 - A package label or nutrition label alone is not a consumed portion; use label information only when the user or image evidence indicates an eaten/drunk amount.
+- For supplements, tablets, capsules, powders, and nutrition labels: use declared nutrition facts when available. Free amino acids or supplement actives such as citrulline, creatine, EAAs, BCAAs, vitamins, and minerals may contribute calories if appropriate, but do not count them as protein unless the nutrition label explicitly declares protein or the item is a normal protein food/powder.
 Select the most appropriate icon from this list:
 [bakery_dining, brunch_dining, bento, cake, coffee, cookie, egg_alt, fastfood, flatware, liquor, microwave, nightlife, outdoor_grill, ramen_dining, restaurant, rice_bowl, sports_bar, tapas]
 ''',
@@ -452,7 +460,10 @@ Calculate calories based on the user profile provided and standard MET values.
     final body = jsonEncode({
       ..._geminiSystemInstruction(messages),
       'contents': _geminiContents(messages),
-      'generationConfig': {'responseMimeType': 'application/json'},
+      'generationConfig': {
+        'responseMimeType': 'application/json',
+        'temperature': 0.2,
+      },
     });
 
     final uri = Uri.parse(
