@@ -46,9 +46,29 @@ app.*.map.json
 /android/app/release
 
 # Secrets
+.env
+lib/.ENV
 android/key.properties
 android/app/*.jks
 android/app/*.keystore
 google-services.json
 GoogleService-Info.plist
 wes_client_secret.json
+
+# Local evaluation/export artifacts
+evals/
+corrected-backups/
+tool/__pycache__/
+tool/food_prompt_eval_cases.csv
+tool/food_prompt_eval_cases_gemini31pro.csv
+tool/food_prompt_eval_cases_gemini31pro_retry.csv
+tool/food_prompt_eval_images_blind/
+tool/food_prompt_eval_instructions.md
+tool/food_prompt_eval_judge.csv
+tool/food_prompt_eval_retry_cases.csv
+tool/run_food_prompt_eval.py
+
+# Local health/gym notes if copied into repo root
+health_test_order_and_gym_notes_*.txt
+gym_plan_insulin_thyroid.txt
+_pdf_extract/

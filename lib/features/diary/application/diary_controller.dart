@@ -78,6 +78,53 @@ class DiaryController extends _$DiaryController {
     unawaited(_analyzeAndFill(entry));
   }
 
+  Future<void> rerunFoodAnalysis({
+    required DiaryEntry entry,
+    required String description,
+  }) async {
+    if (entry.type != EntryType.food) {
+      throw Exception('AI reruns are available for food entries only.');
+    }
+
+    final prompt = description.trim();
+    if (prompt.isEmpty && entry.imagePaths.isEmpty) {
+      throw Exception('Please provide a prompt or keep an image on the entry.');
+    }
+
+    final diaryService = ref.read(diaryServiceProvider);
+    final processingEntry = DiaryEntry(
+      id: entry.id,
+      name: 'Analyzing...',
+      type: EntryType.food,
+      metrics: const {NutritionMetricType.calories: 0},
+      timestamp: entry.timestamp,
+      imagePath: entry.imagePath,
+      imagePaths: entry.imagePaths,
+      icon: _defaultIconForType(EntryType.food),
+      status: FoodEntryStatus.processing,
+      description: prompt.isEmpty ? null : prompt,
+    );
+
+    await diaryService.updateEntry(processingEntry);
+    _invalidateDay(entry.timestamp);
+    await diaryService.addChatMessage(
+      entryId: entry.id,
+      role: 'user',
+      content: prompt.isNotEmpty
+          ? prompt
+          : 'Food log request with ${entry.imagePaths.length} image(s).',
+      metadataJson: jsonEncode({
+        'kind': 'rerun_food_request',
+        'image_paths': entry.imagePaths,
+      }),
+    );
+
+    final succeeded = await _analyzeAndFill(processingEntry);
+    if (!succeeded) {
+      throw Exception('AI rerun failed before a result was returned.');
+    }
+  }
+
   Future<void> logWater(int amountInMl) async {
     final diaryService = ref.read(diaryServiceProvider);
     final now = DateTime.now();
@@ -159,6 +206,9 @@ class DiaryController extends _$DiaryController {
       description: entry.description,
       reasoning: entry.reasoning,
       durationMinutes: entry.durationMinutes,
+      temperatureValue: entry.temperatureValue,
+      temperatureUnit: entry.temperatureUnit,
+      temperatureSite: entry.temperatureSite,
     );
     await diaryService.updateEntry(processingEntry);
     _invalidateDay(entry.timestamp);
@@ -221,13 +271,16 @@ class DiaryController extends _$DiaryController {
       description: entry.description,
       reasoning: _failureReason(lastError),
       durationMinutes: entry.durationMinutes,
+      temperatureValue: entry.temperatureValue,
+      temperatureUnit: entry.temperatureUnit,
+      temperatureSite: entry.temperatureSite,
     );
     await diaryService.updateEntry(failedEntry);
     _invalidateDay(entry.timestamp);
     throw Exception(_failureReason(lastError));
   }
 
-  Future<void> _analyzeAndFill(DiaryEntry entry) async {
+  Future<bool> _analyzeAndFill(DiaryEntry entry) async {
     AIService? aiService;
     String? fallbackModel;
     UserProfile? userProfile;
@@ -250,10 +303,10 @@ class DiaryController extends _$DiaryController {
         base64Images: base64Images,
       );
       await _updateSuccess(entry, result);
-      return;
+      return true;
     } catch (error) {
       if (_isCancellationError(error)) {
-        return;
+        return false;
       }
       lastError = error;
     }
@@ -270,16 +323,17 @@ class DiaryController extends _$DiaryController {
           modelOverride: retryModel,
         );
         await _updateSuccess(entry, result);
-        return;
+        return true;
       } catch (error) {
         if (_isCancellationError(error)) {
-          return;
+          return false;
         }
         lastError = error;
       }
     }
 
     await _updateFailed(entry, lastError);
+    return false;
   }
 
   Future<void> _updateSuccess(
@@ -320,6 +374,9 @@ class DiaryController extends _$DiaryController {
       durationMinutes: entry.type == EntryType.exercise
           ? _toInt(normalizedResult['durationMinutes'])
           : null,
+      temperatureValue: entry.temperatureValue,
+      temperatureUnit: entry.temperatureUnit,
+      temperatureSite: entry.temperatureSite,
     );
 
     await ref.read(diaryServiceProvider).updateEntry(updatedEntry);
@@ -373,6 +430,10 @@ class DiaryController extends _$DiaryController {
         requestId: entry.id,
         modelOverride: modelOverride,
       );
+    }
+
+    if (entry.type == EntryType.temperature) {
+      throw Exception('Temperature entries do not use AI analysis.');
     }
 
     return aiService.analyzeFood(
@@ -449,6 +510,9 @@ class DiaryController extends _$DiaryController {
       status: status,
       icon: icon,
       durationMinutes: entry.durationMinutes,
+      temperatureValue: entry.temperatureValue,
+      temperatureUnit: entry.temperatureUnit,
+      temperatureSite: entry.temperatureSite,
     );
   }
 
@@ -571,11 +635,19 @@ class DiaryController extends _$DiaryController {
   }
 
   String _fallbackName(EntryType type) {
-    return type == EntryType.exercise ? 'Unknown Exercise' : 'Unknown Food';
+    return switch (type) {
+      EntryType.exercise => 'Unknown Exercise',
+      EntryType.temperature => 'Temperature',
+      EntryType.food => 'Unknown Food',
+    };
   }
 
   String _defaultIconForType(EntryType type) {
-    return type == EntryType.exercise ? 'directions_run' : 'restaurant';
+    return switch (type) {
+      EntryType.exercise => 'directions_run',
+      EntryType.temperature => 'thermostat',
+      EntryType.food => 'restaurant',
+    };
   }
 
   int _toInt(dynamic val) {

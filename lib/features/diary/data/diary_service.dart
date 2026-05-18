@@ -44,6 +44,9 @@ class DiaryService {
       description: Value(entry.description),
       reasoning: Value(entry.reasoning),
       durationMinutes: Value(entry.durationMinutes),
+      temperatureValue: Value(entry.temperatureValue),
+      temperatureUnit: Value(entry.temperatureUnit),
+      temperatureSite: Value(entry.temperatureSite),
       updatedAt: Value(now),
       updatedBy: Value(deviceId),
       deletedAt: const Value(null),
@@ -297,6 +300,10 @@ class DiaryService {
         continue;
       }
 
+      if (row.type != EntryType.food.index) {
+        continue;
+      }
+
       for (final metric in NutritionMetricType.values) {
         summary[metric.key] =
             (summary[metric.key] ?? 0) + (metrics[metric] ?? 0);
@@ -402,16 +409,19 @@ LIMIT 200
     return DiaryEntry(
       id: row.id,
       name: row.name,
-      type: EntryType.values[row.type],
+      type: _entryType(row.type),
       metrics: metrics,
       timestamp: DateTime.fromMillisecondsSinceEpoch(row.timestamp),
       imagePath: row.imagePath,
       imagePaths: imagePaths,
       icon: row.icon,
-      status: FoodEntryStatus.values[row.status],
+      status: _entryStatus(row.status),
       description: row.description,
       reasoning: row.reasoning,
       durationMinutes: row.durationMinutes,
+      temperatureValue: row.temperatureValue,
+      temperatureUnit: row.temperatureUnit,
+      temperatureSite: row.temperatureSite,
     );
   }
 
@@ -462,6 +472,20 @@ LIMIT 200
 
   double _roundMetricValue(double value) {
     return (value * 10).roundToDouble() / 10;
+  }
+
+  EntryType _entryType(int index) {
+    if (index < 0 || index >= EntryType.values.length) {
+      return EntryType.food;
+    }
+    return EntryType.values[index];
+  }
+
+  FoodEntryStatus _entryStatus(int index) {
+    if (index < 0 || index >= FoodEntryStatus.values.length) {
+      return FoodEntryStatus.synced;
+    }
+    return FoodEntryStatus.values[index];
   }
 
   String _normalize(String value) => value.trim().toLowerCase();

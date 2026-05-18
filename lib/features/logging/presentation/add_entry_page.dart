@@ -13,6 +13,7 @@ import 'package:nutrinutri/features/logging/presentation/add_entry_controller.da
 import 'package:nutrinutri/features/logging/presentation/managers/add_entry_form_manager.dart';
 import 'package:nutrinutri/features/logging/presentation/widgets/ai_entry_wizard.dart';
 import 'package:nutrinutri/features/logging/presentation/widgets/manual_entry_section.dart';
+import 'package:nutrinutri/features/logging/presentation/widgets/temperature_entry_section.dart';
 
 class AddEntryPage extends ConsumerStatefulWidget {
   const AddEntryPage({
@@ -30,6 +31,7 @@ class AddEntryPage extends ConsumerStatefulWidget {
 class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   late final AddEntryFormManager _formManager;
   bool _isApplyingAiCorrection = false;
+  bool _isRerunningAi = false;
   String? _aiRequestLabel;
 
   @override
@@ -193,6 +195,32 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     }
   }
 
+  Future<void> _rerunAiAnalysis() async {
+    final entry = widget.existingEntry;
+    if (entry == null) return;
+
+    try {
+      setState(() => _isRerunningAi = true);
+      await _formManager.rerunAiAnalysis(entry);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Entry rerun with AI')),
+        );
+        context.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('AI rerun failed: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRerunningAi = false);
+      }
+    }
+  }
+
   Future<void> _pickDate() async {
     final current = ref.read(addEntryControllerProvider).selectedDate;
     final pickedDate = await showDatePicker(
@@ -221,14 +249,16 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(addEntryControllerProvider);
     final isEditing = widget.existingEntry != null;
+    final entryType = widget.existingEntry?.type ?? widget.initialType;
 
-    final isExercise =
-        widget.initialType == EntryType.exercise ||
-        (widget.existingEntry?.type == EntryType.exercise);
+    final isExercise = entryType == EntryType.exercise;
+    final isTemperature = entryType == EntryType.temperature;
     final title = isEditing
         ? 'Edit Entry'
         : isExercise
         ? 'Log Exercise'
+        : isTemperature
+        ? 'Log Temperature'
         : 'Log Food';
 
     return Scaffold(
@@ -239,7 +269,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!isEditing && !state.showForm)
+              if (!isEditing && !state.showForm && !isTemperature)
                 AIEntryWizard(
                   isExercise: isExercise,
                   descriptionController: _formManager.descriptionController,
@@ -265,17 +295,49 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                         .toggleForm(true);
                   },
                 ),
-              if (state.showForm)
+              if (isTemperature)
+                TemperatureEntrySection(
+                  isEditing: isEditing,
+                  temperatureController: _formManager.temperatureController,
+                  selectedUnit: state.temperatureUnit,
+                  selectedSite: state.temperatureSite,
+                  selectedDate: state.selectedDate,
+                  selectedTime: state.selectedTime,
+                  onUnitChanged: (unit) => ref
+                      .read(addEntryControllerProvider.notifier)
+                      .updateTemperatureUnit(unit),
+                  onSiteChanged: (site) => ref
+                      .read(addEntryControllerProvider.notifier)
+                      .updateTemperatureSite(site),
+                  onPickDate: _pickDate,
+                  onPickTime: _pickTime,
+                  onSave: _saveEntry,
+                  onDeleteConfirmed: () async {
+                    try {
+                      await _formManager.deleteEntry(widget.existingEntry!);
+                      if (context.mounted) context.pop();
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to delete: $e')),
+                        );
+                      }
+                    }
+                  },
+                ),
+              if (state.showForm && !isTemperature)
                 ManualEntrySection(
                   isEditing: isEditing,
                   isExercise: isExercise,
                   nameController: _formManager.nameController,
                   metricControllers: _formManager.metricControllers,
                   correctionController: _formManager.correctionController,
+                  rerunPromptController: _formManager.rerunPromptController,
                   durationController: _formManager.durationController,
                   reasoning: widget.existingEntry?.reasoning,
                   aiRequestLabel: _aiRequestLabel,
                   isApplyingAiCorrection: _isApplyingAiCorrection,
+                  isRerunningAi: _isRerunningAi,
                   selectedIcon: state.selectedIcon,
                   selectedDate: state.selectedDate,
                   selectedTime: state.selectedTime,
@@ -294,6 +356,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   onSave: _saveEntry,
                   onApplyAiCorrection:
                       isEditing && !isExercise ? _applyAiCorrection : null,
+                  onRerunAi: isEditing && !isExercise ? _rerunAiAnalysis : null,
                   onDeleteConfirmed: () async {
                     try {
                       await _formManager.deleteEntry(widget.existingEntry!);

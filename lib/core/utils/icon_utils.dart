@@ -99,6 +99,7 @@ class IconUtils {
 
   static const Map<String, IconData> otherIcons = {
     'warning': Icons.warning_amber_rounded,
+    'thermostat': Icons.thermostat,
   };
 
   static Map<String, IconData> get iconMap => {

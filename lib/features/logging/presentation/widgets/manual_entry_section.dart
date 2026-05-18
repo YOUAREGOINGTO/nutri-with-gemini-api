@@ -12,10 +12,12 @@ class ManualEntrySection extends StatelessWidget {
     required this.nameController,
     required this.metricControllers,
     this.correctionController,
+    this.rerunPromptController,
     this.durationController,
     this.reasoning,
     this.aiRequestLabel,
     this.isApplyingAiCorrection = false,
+    this.isRerunningAi = false,
     required this.selectedIcon,
     required this.selectedDate,
     required this.selectedTime,
@@ -25,6 +27,7 @@ class ManualEntrySection extends StatelessWidget {
     required this.onPickTime,
     required this.onSave,
     this.onApplyAiCorrection,
+    this.onRerunAi,
     required this.onDeleteConfirmed,
   });
   final bool isEditing;
@@ -32,10 +35,12 @@ class ManualEntrySection extends StatelessWidget {
   final TextEditingController nameController;
   final Map<NutritionMetricType, TextEditingController> metricControllers;
   final TextEditingController? correctionController;
+  final TextEditingController? rerunPromptController;
   final TextEditingController? durationController;
   final String? reasoning;
   final String? aiRequestLabel;
   final bool isApplyingAiCorrection;
+  final bool isRerunningAi;
   final String selectedIcon;
   final DateTime selectedDate;
   final TimeOfDay selectedTime;
@@ -45,6 +50,7 @@ class ManualEntrySection extends StatelessWidget {
   final VoidCallback onPickTime;
   final Future<void> Function() onSave;
   final Future<void> Function()? onApplyAiCorrection;
+  final Future<void> Function()? onRerunAi;
   final Future<void> Function() onDeleteConfirmed;
 
   @override
@@ -95,6 +101,33 @@ class ManualEntrySection extends StatelessWidget {
               ],
             ),
           ],
+        ],
+        if (!isExercise &&
+            isEditing &&
+            rerunPromptController != null &&
+            onRerunAi != null) ...[
+          const Gap(24),
+          TextField(
+            controller: rerunPromptController,
+            decoration: const InputDecoration(
+              labelText: 'Original AI prompt',
+              hintText: 'e.g. 2 eggs and toast',
+              border: OutlineInputBorder(),
+            ),
+            minLines: 2,
+            maxLines: 4,
+          ),
+          const Gap(12),
+          FilledButton.icon(
+            onPressed: isRerunningAi ? null : onRerunAi,
+            icon: isRerunningAi
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: Text(isRerunningAi ? 'Rerunning AI...' : 'Rerun AI'),
+          ),
         ],
         if (!isExercise &&
             isEditing &&

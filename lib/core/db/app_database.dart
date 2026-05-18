@@ -26,6 +26,9 @@ class DiaryEntries extends Table with AuditColumns {
   TextColumn get description => text().nullable()();
   TextColumn get reasoning => text().nullable()();
   IntColumn get durationMinutes => integer().nullable()();
+  RealColumn get temperatureValue => real().nullable()();
+  TextColumn get temperatureUnit => text().nullable()();
+  TextColumn get temperatureSite => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -138,7 +141,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -151,6 +154,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 3) {
         await _migrateFromV2();
+      }
+      if (from < 4) {
+        await _migrateFromV3();
       }
     },
   );
@@ -380,5 +386,17 @@ CREATE TABLE IF NOT EXISTS ai_chats (
   metadata_json TEXT
 );
 ''');
+  }
+
+  Future<void> _migrateFromV3() async {
+    await customStatement(
+      'ALTER TABLE diary_entries ADD COLUMN temperature_value REAL;',
+    );
+    await customStatement(
+      'ALTER TABLE diary_entries ADD COLUMN temperature_unit TEXT;',
+    );
+    await customStatement(
+      'ALTER TABLE diary_entries ADD COLUMN temperature_site TEXT;',
+    );
   }
 }

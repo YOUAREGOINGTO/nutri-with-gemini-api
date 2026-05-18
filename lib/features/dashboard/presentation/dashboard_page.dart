@@ -8,8 +8,10 @@ import 'package:nutrinutri/features/dashboard/presentation/dashboard_providers.d
 import 'package:nutrinutri/features/dashboard/presentation/widgets/daily_summary_section.dart';
 import 'package:nutrinutri/features/dashboard/presentation/widgets/date_switcher.dart';
 import 'package:nutrinutri/features/dashboard/presentation/widgets/entries_list.dart';
+import 'package:nutrinutri/features/dashboard/presentation/widgets/temperature_timeline_section.dart';
 import 'package:nutrinutri/features/dashboard/presentation/widgets/water_log_dialog.dart';
 import 'package:nutrinutri/features/diary/application/diary_controller.dart';
+import 'package:nutrinutri/features/diary/domain/diary_entry.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -39,20 +41,25 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     ref.invalidate(dayEntriesProvider(_selectedDate));
   }
 
-  String _addEntryRoute({required bool isExercise}) {
-    if (!isExercise) return '/add-entry';
-
-    return Uri(
-      path: '/add-entry',
-      queryParameters: {'type': 'exercise'},
-    ).toString();
+  String _addEntryRoute(EntryType type) {
+    return switch (type) {
+      EntryType.exercise => Uri(
+        path: '/add-entry',
+        queryParameters: {'type': 'exercise'},
+      ).toString(),
+      EntryType.temperature => Uri(
+        path: '/add-entry',
+        queryParameters: {'type': 'temperature'},
+      ).toString(),
+      EntryType.food => '/add-entry',
+    };
   }
 
   Future<void> _openAddEntry(
     BuildContext context, {
-    required bool isExercise,
+    required EntryType type,
   }) async {
-    await context.push(_addEntryRoute(isExercise: isExercise));
+    await context.push(_addEntryRoute(type));
     _refresh();
   }
 
@@ -133,24 +140,42 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const Spacer(),
-                  // Quick actions
-                  FilledButton.tonalIcon(
-                    onPressed: () => _logWater(context),
-                    icon: const Icon(Icons.water_drop),
-                    label: const Text('Log Water'),
-                  ),
-                  const Gap(12),
-                  FilledButton.tonalIcon(
-                    onPressed: () => _openAddEntry(context, isExercise: true),
-                    icon: const Icon(Icons.fitness_center),
-                    label: const Text('Log Exercise'),
-                  ),
-                  const Gap(12),
-                  FilledButton.icon(
-                    onPressed: () => _openAddEntry(context, isExercise: false),
-                    icon: const Icon(Icons.restaurant),
-                    label: const Text('Log Food'),
+                  const Gap(16),
+                  Expanded(
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: () => _logWater(context),
+                          icon: const Icon(Icons.water_drop),
+                          label: const Text('Log Water'),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: () => _openAddEntry(
+                            context,
+                            type: EntryType.temperature,
+                          ),
+                          icon: const Icon(Icons.thermostat),
+                          label: const Text('Log Temperature'),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: () => _openAddEntry(
+                            context,
+                            type: EntryType.exercise,
+                          ),
+                          icon: const Icon(Icons.fitness_center),
+                          label: const Text('Log Exercise'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () =>
+                              _openAddEntry(context, type: EntryType.food),
+                          icon: const Icon(Icons.restaurant),
+                          label: const Text('Log Food'),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -172,6 +197,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                             ),
                             const Gap(16),
                             DailySummarySection(today: _selectedDate),
+                            const Gap(16),
+                            TemperatureTimelineSection(today: _selectedDate),
                           ],
                         ),
                       ),
@@ -209,6 +236,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           DateSwitcher(selectedDate: _selectedDate, onDateChange: _updateDate),
           const Gap(8),
           DailySummarySection(today: _selectedDate),
+          const Gap(16),
+          TemperatureTimelineSection(today: _selectedDate),
           const Gap(24),
           EntriesList(today: _selectedDate, onRefresh: _refresh),
           const Gap(80),
@@ -236,15 +265,22 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         ),
         const Gap(16),
         FloatingActionButton.small(
+          heroTag: 'log_temperature',
+          onPressed: () => _openAddEntry(context, type: EntryType.temperature),
+          tooltip: 'Log Temperature',
+          child: const Icon(Icons.thermostat),
+        ),
+        const Gap(16),
+        FloatingActionButton.small(
           heroTag: 'log_exercise',
-          onPressed: () => _openAddEntry(context, isExercise: true),
+          onPressed: () => _openAddEntry(context, type: EntryType.exercise),
           tooltip: 'Log Exercise',
           child: const Icon(Icons.fitness_center),
         ),
         const Gap(16),
         FloatingActionButton.extended(
           heroTag: 'log_food',
-          onPressed: () => _openAddEntry(context, isExercise: false),
+          onPressed: () => _openAddEntry(context, type: EntryType.food),
           label: const Text('Log Food'),
           icon: const Icon(Icons.restaurant),
         ),

@@ -36,6 +36,9 @@ class DataPortabilityService {
     'description',
     'reasoning',
     'duration_minutes',
+    'temperature_value',
+    'temperature_unit',
+    'temperature_site',
     'icon',
   ];
 
@@ -281,6 +284,9 @@ class DataPortabilityService {
                 description: Value(entry.description),
                 reasoning: Value(entry.reasoning),
                 durationMinutes: Value(entry.durationMinutes),
+                temperatureValue: Value(entry.temperatureValue),
+                temperatureUnit: Value(entry.temperatureUnit),
+                temperatureSite: Value(entry.temperatureSite),
                 updatedAt: Value(now),
                 updatedBy: Value(deviceId),
                 deletedAt: const Value(null),
@@ -505,6 +511,11 @@ class DataPortabilityService {
         row.description ?? '',
         row.reasoning ?? '',
         row.durationMinutes?.toString() ?? '',
+        row.temperatureValue == null
+            ? ''
+            : _formatNumber(row.temperatureValue!),
+        row.temperatureUnit ?? '',
+        row.temperatureSite ?? '',
         row.icon ?? '',
         ...NutritionMetricType.values.map(
           (metric) => _formatNumber(metrics[metric] ?? 0),
@@ -532,6 +543,15 @@ class DataPortabilityService {
     final durationMinutes = _parseInt(
       _cell(row, headerIndex, 'duration_minutes'),
     );
+    final temperatureValue = _parseNullableDouble(
+      _cell(row, headerIndex, 'temperature_value'),
+    );
+    final temperatureUnit = _blankToNull(
+      _cell(row, headerIndex, 'temperature_unit'),
+    );
+    final temperatureSite = _blankToNull(
+      _cell(row, headerIndex, 'temperature_site'),
+    );
     final metrics = <NutritionMetricType, double>{};
 
     for (final metric in NutritionMetricType.values) {
@@ -550,6 +570,9 @@ class DataPortabilityService {
       description: description,
       reasoning: reasoning,
       durationMinutes: durationMinutes,
+      temperatureValue: temperatureValue,
+      temperatureUnit: temperatureUnit,
+      temperatureSite: temperatureSite,
       icon: icon,
       metrics: metrics,
     );
@@ -895,6 +918,10 @@ class DataPortabilityService {
       case 'workout':
       case '1':
         return EntryType.exercise;
+      case 'temperature':
+      case 'temp':
+      case '2':
+        return EntryType.temperature;
       case 'food':
       case 'meal':
       case '0':
@@ -953,6 +980,14 @@ class DataPortabilityService {
   double _parseDouble(String value) {
     final parsed = double.tryParse(value.trim());
     if (parsed == null || !parsed.isFinite) return 0;
+    return parsed;
+  }
+
+  double? _parseNullableDouble(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final parsed = double.tryParse(trimmed);
+    if (parsed == null || !parsed.isFinite) return null;
     return parsed;
   }
 
@@ -1023,6 +1058,9 @@ class _ImportedCsvEntry {
     required this.description,
     required this.reasoning,
     required this.durationMinutes,
+    required this.temperatureValue,
+    required this.temperatureUnit,
+    required this.temperatureSite,
     required this.icon,
     required this.metrics,
   });
@@ -1034,6 +1072,9 @@ class _ImportedCsvEntry {
   final String? description;
   final String? reasoning;
   final int? durationMinutes;
+  final double? temperatureValue;
+  final String? temperatureUnit;
+  final String? temperatureSite;
   final String? icon;
   final Map<NutritionMetricType, double> metrics;
 }

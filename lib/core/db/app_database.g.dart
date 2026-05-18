@@ -156,6 +156,39 @@ class $DiaryEntriesTable extends DiaryEntries
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _temperatureValueMeta =
+      const VerificationMeta('temperatureValue');
+  @override
+  late final GeneratedColumn<double> temperatureValue =
+      GeneratedColumn<double>(
+        'temperature_value',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _temperatureUnitMeta = const VerificationMeta(
+    'temperatureUnit',
+  );
+  @override
+  late final GeneratedColumn<String> temperatureUnit = GeneratedColumn<String>(
+    'temperature_unit',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _temperatureSiteMeta = const VerificationMeta(
+    'temperatureSite',
+  );
+  @override
+  late final GeneratedColumn<String> temperatureSite = GeneratedColumn<String>(
+    'temperature_site',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     updatedAt,
@@ -172,6 +205,9 @@ class $DiaryEntriesTable extends DiaryEntries
     description,
     reasoning,
     durationMinutes,
+    temperatureValue,
+    temperatureUnit,
+    temperatureSite,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -285,6 +321,33 @@ class $DiaryEntriesTable extends DiaryEntries
         ),
       );
     }
+    if (data.containsKey('temperature_value')) {
+      context.handle(
+        _temperatureValueMeta,
+        temperatureValue.isAcceptableOrUnknown(
+          data['temperature_value']!,
+          _temperatureValueMeta,
+        ),
+      );
+    }
+    if (data.containsKey('temperature_unit')) {
+      context.handle(
+        _temperatureUnitMeta,
+        temperatureUnit.isAcceptableOrUnknown(
+          data['temperature_unit']!,
+          _temperatureUnitMeta,
+        ),
+      );
+    }
+    if (data.containsKey('temperature_site')) {
+      context.handle(
+        _temperatureSiteMeta,
+        temperatureSite.isAcceptableOrUnknown(
+          data['temperature_site']!,
+          _temperatureSiteMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -350,6 +413,18 @@ class $DiaryEntriesTable extends DiaryEntries
         DriftSqlType.int,
         data['${effectivePrefix}duration_minutes'],
       ),
+      temperatureValue: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}temperature_value'],
+      ),
+      temperatureUnit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}temperature_unit'],
+      ),
+      temperatureSite: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}temperature_site'],
+      ),
     );
   }
 
@@ -374,6 +449,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
   final String? description;
   final String? reasoning;
   final int? durationMinutes;
+  final double? temperatureValue;
+  final String? temperatureUnit;
+  final String? temperatureSite;
   const DiaryEntryRow({
     required this.updatedAt,
     required this.updatedBy,
@@ -389,6 +467,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     this.description,
     this.reasoning,
     this.durationMinutes,
+    this.temperatureValue,
+    this.temperatureUnit,
+    this.temperatureSite,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -419,6 +500,15 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     if (!nullToAbsent || durationMinutes != null) {
       map['duration_minutes'] = Variable<int>(durationMinutes);
     }
+    if (!nullToAbsent || temperatureValue != null) {
+      map['temperature_value'] = Variable<double>(temperatureValue);
+    }
+    if (!nullToAbsent || temperatureUnit != null) {
+      map['temperature_unit'] = Variable<String>(temperatureUnit);
+    }
+    if (!nullToAbsent || temperatureSite != null) {
+      map['temperature_site'] = Variable<String>(temperatureSite);
+    }
     return map;
   }
 
@@ -448,6 +538,15 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       durationMinutes: durationMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(durationMinutes),
+      temperatureValue: temperatureValue == null && nullToAbsent
+          ? const Value.absent()
+          : Value(temperatureValue),
+      temperatureUnit: temperatureUnit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(temperatureUnit),
+      temperatureSite: temperatureSite == null && nullToAbsent
+          ? const Value.absent()
+          : Value(temperatureSite),
     );
   }
 
@@ -471,6 +570,11 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       description: serializer.fromJson<String?>(json['description']),
       reasoning: serializer.fromJson<String?>(json['reasoning']),
       durationMinutes: serializer.fromJson<int?>(json['durationMinutes']),
+      temperatureValue: serializer.fromJson<double?>(
+        json['temperatureValue'],
+      ),
+      temperatureUnit: serializer.fromJson<String?>(json['temperatureUnit']),
+      temperatureSite: serializer.fromJson<String?>(json['temperatureSite']),
     );
   }
   @override
@@ -491,6 +595,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       'description': serializer.toJson<String?>(description),
       'reasoning': serializer.toJson<String?>(reasoning),
       'durationMinutes': serializer.toJson<int?>(durationMinutes),
+      'temperatureValue': serializer.toJson<double?>(temperatureValue),
+      'temperatureUnit': serializer.toJson<String?>(temperatureUnit),
+      'temperatureSite': serializer.toJson<String?>(temperatureSite),
     };
   }
 
@@ -509,6 +616,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     Value<String?> description = const Value.absent(),
     Value<String?> reasoning = const Value.absent(),
     Value<int?> durationMinutes = const Value.absent(),
+    Value<double?> temperatureValue = const Value.absent(),
+    Value<String?> temperatureUnit = const Value.absent(),
+    Value<String?> temperatureSite = const Value.absent(),
   }) => DiaryEntryRow(
     updatedAt: updatedAt ?? this.updatedAt,
     updatedBy: updatedBy ?? this.updatedBy,
@@ -526,6 +636,15 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     durationMinutes: durationMinutes.present
         ? durationMinutes.value
         : this.durationMinutes,
+    temperatureValue: temperatureValue.present
+        ? temperatureValue.value
+        : this.temperatureValue,
+    temperatureUnit: temperatureUnit.present
+        ? temperatureUnit.value
+        : this.temperatureUnit,
+    temperatureSite: temperatureSite.present
+        ? temperatureSite.value
+        : this.temperatureSite,
   );
   DiaryEntryRow copyWithCompanion(DiaryEntriesCompanion data) {
     return DiaryEntryRow(
@@ -549,6 +668,15 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       durationMinutes: data.durationMinutes.present
           ? data.durationMinutes.value
           : this.durationMinutes,
+      temperatureValue: data.temperatureValue.present
+          ? data.temperatureValue.value
+          : this.temperatureValue,
+      temperatureUnit: data.temperatureUnit.present
+          ? data.temperatureUnit.value
+          : this.temperatureUnit,
+      temperatureSite: data.temperatureSite.present
+          ? data.temperatureSite.value
+          : this.temperatureSite,
     );
   }
 
@@ -568,7 +696,10 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
           ..write('status: $status, ')
           ..write('description: $description, ')
           ..write('reasoning: $reasoning, ')
-          ..write('durationMinutes: $durationMinutes')
+          ..write('durationMinutes: $durationMinutes, ')
+          ..write('temperatureValue: $temperatureValue, ')
+          ..write('temperatureUnit: $temperatureUnit, ')
+          ..write('temperatureSite: $temperatureSite')
           ..write(')'))
         .toString();
   }
@@ -589,6 +720,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     description,
     reasoning,
     durationMinutes,
+    temperatureValue,
+    temperatureUnit,
+    temperatureSite,
   );
   @override
   bool operator ==(Object other) =>
@@ -607,7 +741,10 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
           other.status == this.status &&
           other.description == this.description &&
           other.reasoning == this.reasoning &&
-          other.durationMinutes == this.durationMinutes);
+          other.durationMinutes == this.durationMinutes &&
+          other.temperatureValue == this.temperatureValue &&
+          other.temperatureUnit == this.temperatureUnit &&
+          other.temperatureSite == this.temperatureSite);
 }
 
 class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
@@ -625,6 +762,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
   final Value<String?> description;
   final Value<String?> reasoning;
   final Value<int?> durationMinutes;
+  final Value<double?> temperatureValue;
+  final Value<String?> temperatureUnit;
+  final Value<String?> temperatureSite;
   final Value<int> rowid;
   const DiaryEntriesCompanion({
     this.updatedAt = const Value.absent(),
@@ -641,6 +781,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     this.description = const Value.absent(),
     this.reasoning = const Value.absent(),
     this.durationMinutes = const Value.absent(),
+    this.temperatureValue = const Value.absent(),
+    this.temperatureUnit = const Value.absent(),
+    this.temperatureSite = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DiaryEntriesCompanion.insert({
@@ -658,6 +801,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     this.description = const Value.absent(),
     this.reasoning = const Value.absent(),
     this.durationMinutes = const Value.absent(),
+    this.temperatureValue = const Value.absent(),
+    this.temperatureUnit = const Value.absent(),
+    this.temperatureSite = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -679,6 +825,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     Expression<String>? description,
     Expression<String>? reasoning,
     Expression<int>? durationMinutes,
+    Expression<double>? temperatureValue,
+    Expression<String>? temperatureUnit,
+    Expression<String>? temperatureSite,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -696,6 +845,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
       if (description != null) 'description': description,
       if (reasoning != null) 'reasoning': reasoning,
       if (durationMinutes != null) 'duration_minutes': durationMinutes,
+      if (temperatureValue != null) 'temperature_value': temperatureValue,
+      if (temperatureUnit != null) 'temperature_unit': temperatureUnit,
+      if (temperatureSite != null) 'temperature_site': temperatureSite,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -715,6 +867,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     Value<String?>? description,
     Value<String?>? reasoning,
     Value<int?>? durationMinutes,
+    Value<double?>? temperatureValue,
+    Value<String?>? temperatureUnit,
+    Value<String?>? temperatureSite,
     Value<int>? rowid,
   }) {
     return DiaryEntriesCompanion(
@@ -732,6 +887,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
       description: description ?? this.description,
       reasoning: reasoning ?? this.reasoning,
       durationMinutes: durationMinutes ?? this.durationMinutes,
+      temperatureValue: temperatureValue ?? this.temperatureValue,
+      temperatureUnit: temperatureUnit ?? this.temperatureUnit,
+      temperatureSite: temperatureSite ?? this.temperatureSite,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -781,6 +939,15 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     if (durationMinutes.present) {
       map['duration_minutes'] = Variable<int>(durationMinutes.value);
     }
+    if (temperatureValue.present) {
+      map['temperature_value'] = Variable<double>(temperatureValue.value);
+    }
+    if (temperatureUnit.present) {
+      map['temperature_unit'] = Variable<String>(temperatureUnit.value);
+    }
+    if (temperatureSite.present) {
+      map['temperature_site'] = Variable<String>(temperatureSite.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -804,6 +971,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
           ..write('description: $description, ')
           ..write('reasoning: $reasoning, ')
           ..write('durationMinutes: $durationMinutes, ')
+          ..write('temperatureValue: $temperatureValue, ')
+          ..write('temperatureUnit: $temperatureUnit, ')
+          ..write('temperatureSite: $temperatureSite, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();

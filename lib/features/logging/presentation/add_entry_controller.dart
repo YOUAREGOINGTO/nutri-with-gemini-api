@@ -22,6 +22,8 @@ class AddEntryState {
     required this.selectedTime,
     this.selectedIcon = 'restaurant',
     this.type = EntryType.food,
+    this.temperatureUnit = 'C',
+    this.temperatureSite = 'left',
   }) : images = List.unmodifiable(images ?? const []);
   final List<File> images;
   final bool showForm;
@@ -29,6 +31,8 @@ class AddEntryState {
   final TimeOfDay selectedTime;
   final String selectedIcon;
   final EntryType type;
+  final String temperatureUnit;
+  final String temperatureSite;
   File? get image => images.isEmpty ? null : images.first;
 
   AddEntryState copyWith({
@@ -38,6 +42,8 @@ class AddEntryState {
     TimeOfDay? selectedTime,
     String? selectedIcon,
     EntryType? type,
+    String? temperatureUnit,
+    String? temperatureSite,
   }) {
     return AddEntryState(
       images: images ?? this.images,
@@ -46,6 +52,8 @@ class AddEntryState {
       selectedTime: selectedTime ?? this.selectedTime,
       selectedIcon: selectedIcon ?? this.selectedIcon,
       type: type ?? this.type,
+      temperatureUnit: temperatureUnit ?? this.temperatureUnit,
+      temperatureSite: temperatureSite ?? this.temperatureSite,
     );
   }
 }
@@ -68,9 +76,8 @@ class AddEntryController extends _$AddEntryController {
   void initializeWithType(EntryType type) {
     state = state.copyWith(
       type: type,
-      selectedIcon: type == EntryType.exercise
-          ? 'directions_run'
-          : 'restaurant',
+      selectedIcon: _defaultIconForType(type),
+      showForm: type == EntryType.temperature ? true : state.showForm,
     );
   }
 
@@ -80,10 +87,10 @@ class AddEntryController extends _$AddEntryController {
       showForm: true,
       selectedDate: entry.timestamp,
       selectedTime: TimeOfDay.fromDateTime(entry.timestamp),
-      selectedIcon:
-          entry.icon ??
-          (entry.type == EntryType.exercise ? 'directions_run' : 'restaurant'),
+      selectedIcon: entry.icon ?? _defaultIconForType(entry.type),
       type: entry.type,
+      temperatureUnit: entry.temperatureUnit ?? 'C',
+      temperatureSite: entry.temperatureSite ?? 'left',
     );
   }
 
@@ -153,6 +160,14 @@ class AddEntryController extends _$AddEntryController {
 
   void updateIcon(String icon) {
     state = state.copyWith(selectedIcon: icon);
+  }
+
+  void updateTemperatureUnit(String unit) {
+    state = state.copyWith(temperatureUnit: unit);
+  }
+
+  void updateTemperatureSite(String site) {
+    state = state.copyWith(temperatureSite: site);
   }
 
   void toggleForm(bool show) {
@@ -240,6 +255,52 @@ class AddEntryController extends _$AddEntryController {
     }
   }
 
+  Future<void> saveTemperatureEntry({
+    required DiaryEntry? existingEntry,
+    required String temperatureText,
+  }) async {
+    final diaryService = ref.read(diaryServiceProvider);
+    final value = _parseMetric(temperatureText);
+    if (value == null || value <= 0) {
+      throw Exception('Please enter a temperature.');
+    }
+
+    final unit = state.temperatureUnit.trim().toUpperCase() == 'F' ? 'F' : 'C';
+    final site = state.temperatureSite.trim().toLowerCase() == 'right'
+        ? 'right'
+        : 'left';
+    final timestamp = DateTime(
+      state.selectedDate.year,
+      state.selectedDate.month,
+      state.selectedDate.day,
+      state.selectedTime.hour,
+      state.selectedTime.minute,
+    );
+    final rounded = (value * 10).roundToDouble() / 10;
+    final displayValue = rounded == rounded.roundToDouble()
+        ? rounded.round().toString()
+        : rounded.toStringAsFixed(1);
+    final entry = DiaryEntry(
+      id: existingEntry?.id ?? const Uuid().v4(),
+      name: 'Temperature $displayValue $unit',
+      type: EntryType.temperature,
+      metrics: const {},
+      timestamp: timestamp,
+      icon: 'thermostat',
+      status: FoodEntryStatus.synced,
+      description: 'Under tongue - ${site == 'right' ? 'Right' : 'Left'}',
+      temperatureValue: rounded,
+      temperatureUnit: unit,
+      temperatureSite: site,
+    );
+
+    if (existingEntry != null) {
+      await diaryService.updateEntry(entry);
+    } else {
+      await diaryService.addEntry(entry);
+    }
+  }
+
   Future<void> deleteEntry(DiaryEntry entry) async {
     await ref.read(diaryServiceProvider).deleteEntry(entry);
   }
@@ -272,5 +333,13 @@ class AddEntryController extends _$AddEntryController {
     final normalized = raw.trim().replaceAll(',', '.');
     if (normalized.isEmpty) return null;
     return double.tryParse(normalized);
+  }
+
+  String _defaultIconForType(EntryType type) {
+    return switch (type) {
+      EntryType.exercise => 'directions_run',
+      EntryType.temperature => 'thermostat',
+      EntryType.food => 'restaurant',
+    };
   }
 }

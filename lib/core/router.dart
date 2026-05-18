@@ -66,9 +66,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final entry = state.extra as DiaryEntry?;
           final typeStr = state.uri.queryParameters['type'];
-          final initialType = typeStr == 'exercise'
-              ? EntryType.exercise
-              : EntryType.food;
+          final initialType = switch (typeStr) {
+            'exercise' => EntryType.exercise,
+            'temperature' => EntryType.temperature,
+            _ => EntryType.food,
+          };
           return MaterialPage(
             key: state.pageKey,
             child: AddEntryPage(existingEntry: entry, initialType: initialType),

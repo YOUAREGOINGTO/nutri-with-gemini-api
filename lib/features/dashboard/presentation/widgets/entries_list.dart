@@ -21,6 +21,10 @@ class EntriesList extends ConsumerWidget {
   }
 
   String _subtitleFor(DiaryEntry entry, String caloriesText) {
+    if (entry.type == EntryType.temperature) {
+      return '${DateFormat('HH:mm').format(entry.timestamp)} - Under tongue ${entry.temperatureSiteLabel}';
+    }
+
     return switch (entry.status) {
       FoodEntryStatus.processing => 'Analyzing with AI...',
       FoodEntryStatus.failed => _failedSubtitle(entry),
@@ -70,7 +74,9 @@ class EntriesList extends ConsumerWidget {
               itemCount: entries.length,
               itemBuilder: (context, index) {
                 final entry = entries[index];
-                final iconData = IconUtils.getIcon(entry.icon);
+                final iconData = entry.type == EntryType.temperature
+                    ? Icons.thermostat
+                    : IconUtils.getIcon(entry.icon);
                 final caloriesText =
                     entry.calories == entry.calories.roundToDouble()
                     ? entry.calories.round().toString()
@@ -102,7 +108,9 @@ class EntriesList extends ConsumerWidget {
                         : Icon(iconData),
                   ),
                   title: Text(
-                    entry.name,
+                    entry.type == EntryType.temperature
+                        ? entry.temperatureDisplay
+                        : entry.name,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: isError

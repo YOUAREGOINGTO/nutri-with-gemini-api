@@ -15,7 +15,9 @@ class AddEntryFormManager {
 
   final descriptionController = TextEditingController();
   final correctionController = TextEditingController();
+  final rerunPromptController = TextEditingController();
   final nameController = TextEditingController();
+  final temperatureController = TextEditingController();
   final metricControllers = {
     for (final metric in NutritionMetricType.values)
       metric: TextEditingController(),
@@ -47,7 +49,9 @@ class AddEntryFormManager {
   void dispose() {
     descriptionController.dispose();
     correctionController.dispose();
+    rerunPromptController.dispose();
     nameController.dispose();
+    temperatureController.dispose();
     for (final controller in metricControllers.values) {
       controller.dispose();
     }
@@ -57,6 +61,13 @@ class AddEntryFormManager {
   void initializeWithEntry(DiaryEntry entry) {
     ref.read(addEntryControllerProvider.notifier).initializeWithEntry(entry);
     nameController.text = entry.name;
+    descriptionController.text = entry.description ?? '';
+    rerunPromptController.text = entry.description?.trim().isNotEmpty == true
+        ? entry.description!.trim()
+        : entry.name;
+    temperatureController.text = entry.temperatureValue == null
+        ? ''
+        : _formatMetric(entry.temperatureValue!);
     _applyMetrics(entry);
     durationController.text = entry.durationMinutes?.toString() ?? '';
     onStateChanged();
@@ -98,6 +109,17 @@ class AddEntryFormManager {
   }
 
   Future<void> saveEntry(DiaryEntry? existingEntry) async {
+    final state = ref.read(addEntryControllerProvider);
+    if (state.type == EntryType.temperature) {
+      await ref
+          .read(addEntryControllerProvider.notifier)
+          .saveTemperatureEntry(
+            existingEntry: existingEntry,
+            temperatureText: temperatureController.text,
+          );
+      return;
+    }
+
     await ref
         .read(addEntryControllerProvider.notifier)
         .saveEntry(
@@ -108,6 +130,15 @@ class AddEntryFormManager {
               entry.key: entry.value.text,
           },
           durationMinutes: durationController.text,
+        );
+  }
+
+  Future<void> rerunAiAnalysis(DiaryEntry existingEntry) async {
+    await ref
+        .read(diaryControllerProvider.notifier)
+        .rerunFoodAnalysis(
+          entry: existingEntry,
+          description: rerunPromptController.text,
         );
   }
 
