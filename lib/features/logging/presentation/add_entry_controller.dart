@@ -23,7 +23,7 @@ class AddEntryState {
     this.selectedIcon = 'restaurant',
     this.type = EntryType.food,
     this.temperatureUnit = 'C',
-    this.temperatureSite = 'left',
+    this.temperatureSite = 'under_tongue',
   }) : images = List.unmodifiable(images ?? const []);
   final List<File> images;
   final bool showForm;
@@ -90,7 +90,7 @@ class AddEntryController extends _$AddEntryController {
       selectedIcon: entry.icon ?? _defaultIconForType(entry.type),
       type: entry.type,
       temperatureUnit: entry.temperatureUnit ?? 'C',
-      temperatureSite: entry.temperatureSite ?? 'left',
+      temperatureSite: _normalizeTemperatureSite(entry.temperatureSite),
     );
   }
 
@@ -266,9 +266,7 @@ class AddEntryController extends _$AddEntryController {
     }
 
     final unit = state.temperatureUnit.trim().toUpperCase() == 'F' ? 'F' : 'C';
-    final site = state.temperatureSite.trim().toLowerCase() == 'right'
-        ? 'right'
-        : 'left';
+    final site = _normalizeTemperatureSite(state.temperatureSite);
     final timestamp = DateTime(
       state.selectedDate.year,
       state.selectedDate.month,
@@ -288,7 +286,7 @@ class AddEntryController extends _$AddEntryController {
       timestamp: timestamp,
       icon: 'thermostat',
       status: FoodEntryStatus.synced,
-      description: 'Under tongue - ${site == 'right' ? 'Right' : 'Left'}',
+      description: _temperatureSiteLabel(site),
       temperatureValue: rounded,
       temperatureUnit: unit,
       temperatureSite: site,
@@ -340,6 +338,27 @@ class AddEntryController extends _$AddEntryController {
       EntryType.exercise => 'directions_run',
       EntryType.temperature => 'thermostat',
       EntryType.food => 'restaurant',
+    };
+  }
+
+  String _normalizeTemperatureSite(String? value) {
+    final site = value
+        ?.trim()
+        .toLowerCase()
+        .replaceAll(' ', '_')
+        .replaceAll('-', '_');
+    return switch (site) {
+      'left' || 'left_hand' => 'left_hand',
+      'right' || 'right_hand' => 'right_hand',
+      _ => 'under_tongue',
+    };
+  }
+
+  String _temperatureSiteLabel(String site) {
+    return switch (site) {
+      'left_hand' => 'Left hand',
+      'right_hand' => 'Right hand',
+      _ => 'Under tongue',
     };
   }
 }

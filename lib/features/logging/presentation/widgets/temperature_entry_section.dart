@@ -95,24 +95,24 @@ class TemperatureEntrySection extends StatelessWidget {
                 },
               ),
               const Gap(16),
-              _FieldLabel(text: 'Under tongue side'),
+              _FieldLabel(text: 'Position'),
               const Gap(8),
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(
-                    value: 'left',
-                    label: Text('Left'),
-                    icon: Icon(Icons.keyboard_double_arrow_left),
+                    value: 'under_tongue',
+                    label: Text('Under tongue'),
                   ),
                   ButtonSegment(
-                    value: 'right',
-                    label: Text('Right'),
-                    icon: Icon(Icons.keyboard_double_arrow_right),
+                    value: 'left_hand',
+                    label: Text('Left hand'),
+                  ),
+                  ButtonSegment(
+                    value: 'right_hand',
+                    label: Text('Right hand'),
                   ),
                 ],
-                selected: {
-                  selectedSite.toLowerCase() == 'right' ? 'right' : 'left',
-                },
+                selected: {_normalizedSite(selectedSite)},
                 onSelectionChanged: (selection) {
                   onSiteChanged(selection.first);
                 },
@@ -149,6 +149,19 @@ class TemperatureEntrySection extends StatelessWidget {
         const Gap(32),
       ],
     );
+  }
+
+  String _normalizedSite(String value) {
+    final site = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(' ', '_')
+        .replaceAll('-', '_');
+    return switch (site) {
+      'left' || 'left_hand' => 'left_hand',
+      'right' || 'right_hand' => 'right_hand',
+      _ => 'under_tongue',
+    };
   }
 }
 

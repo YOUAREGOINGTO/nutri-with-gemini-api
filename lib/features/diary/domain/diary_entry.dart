@@ -70,9 +70,15 @@ class DiaryEntry {
   }
 
   String get temperatureSiteLabel {
-    return switch ((temperatureSite ?? 'left').trim().toLowerCase()) {
-      'right' => 'Right',
-      _ => 'Left',
+    final site = (temperatureSite ?? 'under_tongue')
+        .trim()
+        .toLowerCase()
+        .replaceAll(' ', '_')
+        .replaceAll('-', '_');
+    return switch (site) {
+      'left' || 'left_hand' => 'Left hand',
+      'right' || 'right_hand' => 'Right hand',
+      _ => 'Under tongue',
     };
   }
 }

@@ -83,7 +83,7 @@ class DiaryController extends _$DiaryController {
     required String description,
   }) async {
     if (entry.type != EntryType.food) {
-      throw Exception('AI reruns are available for food entries only.');
+      throw Exception('Run Again is available for food entries only.');
     }
 
     final prompt = description.trim();
@@ -107,21 +107,20 @@ class DiaryController extends _$DiaryController {
 
     await diaryService.updateEntry(processingEntry);
     _invalidateDay(entry.timestamp);
-    await diaryService.addChatMessage(
+    await diaryService.replaceFoodAnalysisRun(
       entryId: entry.id,
-      role: 'user',
       content: prompt.isNotEmpty
           ? prompt
           : 'Food log request with ${entry.imagePaths.length} image(s).',
       metadataJson: jsonEncode({
-        'kind': 'rerun_food_request',
+        'kind': 'initial_food_request',
         'image_paths': entry.imagePaths,
       }),
     );
 
     final succeeded = await _analyzeAndFill(processingEntry);
     if (!succeeded) {
-      throw Exception('AI rerun failed before a result was returned.');
+      throw Exception('Run Again failed before a result was returned.');
     }
   }
 

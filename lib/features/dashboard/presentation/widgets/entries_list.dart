@@ -22,7 +22,7 @@ class EntriesList extends ConsumerWidget {
 
   String _subtitleFor(DiaryEntry entry, String caloriesText) {
     if (entry.type == EntryType.temperature) {
-      return '${DateFormat('HH:mm').format(entry.timestamp)} - Under tongue ${entry.temperatureSiteLabel}';
+      return '${DateFormat('HH:mm').format(entry.timestamp)} - ${entry.temperatureSiteLabel}';
     }
 
     return switch (entry.status) {

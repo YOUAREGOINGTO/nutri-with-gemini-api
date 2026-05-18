@@ -204,7 +204,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
       await _formManager.rerunAiAnalysis(entry);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Entry rerun with AI')),
+          const SnackBar(content: Text('Entry run again with AI')),
         );
         context.pop();
       }
@@ -212,7 +212,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('AI rerun failed: $e')));
+        ).showSnackBar(SnackBar(content: Text('Run again failed: $e')));
       }
     } finally {
       if (mounted) {

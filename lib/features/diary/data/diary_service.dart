@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:nutrinutri/core/db/app_database.dart';
@@ -459,6 +460,57 @@ LIMIT 200
     unawaited(_syncService.requestSync());
   }
 
+  Future<void> replaceFoodAnalysisRun({
+    required String entryId,
+    required String content,
+    String? metadataJson,
+  }) async {
+    final chats = await getChatMessages(entryId);
+    AiChatMessage? requestMessage;
+    for (final chat in chats.reversed) {
+      if (_isFoodAnalysisRequest(chat)) {
+        requestMessage = chat;
+        break;
+      }
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final requestId = requestMessage?.id ?? _uuid.v4();
+
+    await _db.transaction(() async {
+      if (requestMessage == null) {
+        await _db
+            .into(_db.aiChats)
+            .insert(
+              AiChatsCompanion.insert(
+                id: requestId,
+                entryId: entryId,
+                role: 'user',
+                content: content,
+                createdAt: now,
+                metadataJson: Value(metadataJson),
+              ),
+              mode: InsertMode.insertOrReplace,
+            );
+      } else {
+        await (_db.update(_db.aiChats)..where((t) => t.id.equals(requestId)))
+            .write(
+              AiChatsCompanion(
+                content: Value(content),
+                createdAt: Value(now),
+                metadataJson: Value(metadataJson),
+              ),
+            );
+      }
+
+      for (final chat in chats) {
+        if (chat.id == requestId) continue;
+        await (_db.delete(_db.aiChats)..where((t) => t.id.equals(chat.id))).go();
+      }
+    });
+    unawaited(_syncService.requestSync());
+  }
+
   AiChatMessage _chatToDomain(AiChatRow row) {
     return AiChatMessage(
       id: row.id,
@@ -468,6 +520,21 @@ LIMIT 200
       createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAt),
       metadataJson: row.metadataJson,
     );
+  }
+
+  bool _isFoodAnalysisRequest(AiChatMessage chat) {
+    if (chat.role != 'user') return false;
+    final rawMetadata = chat.metadataJson;
+    if (rawMetadata == null) return false;
+
+    try {
+      final metadata = jsonDecode(rawMetadata);
+      if (metadata is! Map) return false;
+      final kind = metadata['kind']?.toString();
+      return kind == 'initial_food_request' || kind == 'rerun_food_request';
+    } catch (_) {
+      return false;
+    }
   }
 
   double _roundMetricValue(double value) {
