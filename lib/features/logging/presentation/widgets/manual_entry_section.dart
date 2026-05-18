@@ -110,7 +110,7 @@ class ManualEntrySection extends StatelessWidget {
           TextField(
             controller: rerunPromptController,
             decoration: const InputDecoration(
-              labelText: 'Prompt to run again',
+              labelText: 'Prompt',
               hintText: 'e.g. 2 eggs and toast',
               border: OutlineInputBorder(),
             ),
@@ -126,9 +126,7 @@ class ManualEntrySection extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
-            label: Text(
-              isRerunningAi ? 'Running again...' : 'Run Again',
-            ),
+            label: const Text('Run Again'),
           ),
         ],
         if (!isExercise &&
