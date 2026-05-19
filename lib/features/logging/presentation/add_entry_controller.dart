@@ -258,6 +258,7 @@ class AddEntryController extends _$AddEntryController {
   Future<void> saveTemperatureEntry({
     required DiaryEntry? existingEntry,
     required String temperatureText,
+    String? commentText,
   }) async {
     final diaryService = ref.read(diaryServiceProvider);
     final value = _parseMetric(temperatureText);
@@ -278,6 +279,7 @@ class AddEntryController extends _$AddEntryController {
     final displayValue = rounded == rounded.roundToDouble()
         ? rounded.round().toString()
         : rounded.toStringAsFixed(1);
+    final comment = commentText?.trim();
     final entry = DiaryEntry(
       id: existingEntry?.id ?? const Uuid().v4(),
       name: 'Temperature $displayValue $unit',
@@ -286,7 +288,7 @@ class AddEntryController extends _$AddEntryController {
       timestamp: timestamp,
       icon: 'thermostat',
       status: FoodEntryStatus.synced,
-      description: _temperatureSiteLabel(site),
+      description: comment?.isEmpty == false ? comment : null,
       temperatureValue: rounded,
       temperatureUnit: unit,
       temperatureSite: site,
@@ -351,14 +353,6 @@ class AddEntryController extends _$AddEntryController {
       'left' || 'left_hand' => 'left_hand',
       'right' || 'right_hand' => 'right_hand',
       _ => 'under_tongue',
-    };
-  }
-
-  String _temperatureSiteLabel(String site) {
-    return switch (site) {
-      'left_hand' => 'Left hand',
-      'right_hand' => 'Right hand',
-      _ => 'Under tongue',
     };
   }
 }

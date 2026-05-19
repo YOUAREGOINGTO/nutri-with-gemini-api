@@ -8,6 +8,7 @@ class TemperatureEntrySection extends StatelessWidget {
     super.key,
     required this.isEditing,
     required this.temperatureController,
+    required this.commentController,
     required this.selectedUnit,
     required this.selectedSite,
     required this.selectedDate,
@@ -22,6 +23,7 @@ class TemperatureEntrySection extends StatelessWidget {
 
   final bool isEditing;
   final TextEditingController temperatureController;
+  final TextEditingController commentController;
   final String selectedUnit;
   final String selectedSite;
   final DateTime selectedDate;
@@ -80,6 +82,18 @@ class TemperatureEntrySection extends StatelessWidget {
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.device_thermostat),
                 ),
+              ),
+              const Gap(16),
+              TextField(
+                controller: commentController,
+                decoration: const InputDecoration(
+                  labelText: 'Comment',
+                  hintText: 'Optional',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.notes),
+                ),
+                minLines: 2,
+                maxLines: 4,
               ),
               const Gap(16),
               _FieldLabel(text: 'Unit'),

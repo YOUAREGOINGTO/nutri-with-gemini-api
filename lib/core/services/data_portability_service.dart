@@ -39,6 +39,7 @@ class DataPortabilityService {
     'temperature_value',
     'temperature_unit',
     'temperature_site',
+    'temperature_comment',
     'icon',
   ];
 
@@ -516,6 +517,7 @@ class DataPortabilityService {
             : _formatNumber(row.temperatureValue!),
         row.temperatureUnit ?? '',
         row.temperatureSite ?? '',
+        _temperatureComment(row),
         row.icon ?? '',
         ...NutritionMetricType.values.map(
           (metric) => _formatNumber(metrics[metric] ?? 0),
@@ -537,7 +539,6 @@ class DataPortabilityService {
     final id = _cell(row, headerIndex, 'id').trim();
     final timestamp = _parseTimestamp(row, headerIndex);
     final type = _parseEntryType(_cell(row, headerIndex, 'type'));
-    final description = _blankToNull(_cell(row, headerIndex, 'description'));
     final reasoning = _blankToNull(_cell(row, headerIndex, 'reasoning'));
     final icon = _blankToNull(_cell(row, headerIndex, 'icon'));
     final durationMinutes = _parseInt(
@@ -552,6 +553,7 @@ class DataPortabilityService {
     final temperatureSite = _blankToNull(
       _cell(row, headerIndex, 'temperature_site'),
     );
+    final description = _entryDescriptionFromCsv(row, headerIndex, type);
     final metrics = <NutritionMetricType, double>{};
 
     for (final metric in NutritionMetricType.values) {
@@ -576,6 +578,23 @@ class DataPortabilityService {
       icon: icon,
       metrics: metrics,
     );
+  }
+
+  String _temperatureComment(DiaryEntryRow row) {
+    if (row.type != EntryType.temperature.index) return '';
+    return row.description ?? '';
+  }
+
+  String? _entryDescriptionFromCsv(
+    List<String> row,
+    Map<String, int> headerIndex,
+    EntryType type,
+  ) {
+    final description = _blankToNull(_cell(row, headerIndex, 'description'));
+    if (type != EntryType.temperature) return description;
+
+    return _blankToNull(_cell(row, headerIndex, 'temperature_comment')) ??
+        description;
   }
 
   List<EntryMetricsCompanion> _metricCompanions(

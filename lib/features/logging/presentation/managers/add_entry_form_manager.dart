@@ -18,6 +18,7 @@ class AddEntryFormManager {
   final rerunPromptController = TextEditingController();
   final nameController = TextEditingController();
   final temperatureController = TextEditingController();
+  final temperatureCommentController = TextEditingController();
   final metricControllers = {
     for (final metric in NutritionMetricType.values)
       metric: TextEditingController(),
@@ -52,6 +53,7 @@ class AddEntryFormManager {
     rerunPromptController.dispose();
     nameController.dispose();
     temperatureController.dispose();
+    temperatureCommentController.dispose();
     for (final controller in metricControllers.values) {
       controller.dispose();
     }
@@ -68,6 +70,9 @@ class AddEntryFormManager {
     temperatureController.text = entry.temperatureValue == null
         ? ''
         : _formatMetric(entry.temperatureValue!);
+    temperatureCommentController.text = entry.type == EntryType.temperature
+        ? _temperatureCommentText(entry)
+        : '';
     _applyMetrics(entry);
     durationController.text = entry.durationMinutes?.toString() ?? '';
     onStateChanged();
@@ -116,6 +121,7 @@ class AddEntryFormManager {
           .saveTemperatureEntry(
             existingEntry: existingEntry,
             temperatureText: temperatureController.text,
+            commentText: temperatureCommentController.text,
           );
       return;
     }
@@ -160,5 +166,16 @@ class AddEntryFormManager {
       return value.round().toString();
     }
     return value.toStringAsFixed(1);
+  }
+
+  String _temperatureCommentText(DiaryEntry entry) {
+    final description = entry.description?.trim();
+    if (description == null || description.isEmpty) return '';
+
+    final siteLabel = entry.temperatureSiteLabel.trim().toLowerCase();
+    if (description.toLowerCase() == siteLabel) return '';
+    if (description.toLowerCase().startsWith('under tongue - ')) return '';
+
+    return description;
   }
 }

@@ -299,6 +299,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                 TemperatureEntrySection(
                   isEditing: isEditing,
                   temperatureController: _formManager.temperatureController,
+                  commentController:
+                      _formManager.temperatureCommentController,
                   selectedUnit: state.temperatureUnit,
                   selectedSite: state.temperatureSite,
                   selectedDate: state.selectedDate,
