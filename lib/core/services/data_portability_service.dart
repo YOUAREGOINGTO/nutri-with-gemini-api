@@ -42,6 +42,22 @@ class DataPortabilityService {
     'temperature_comment',
     'icon',
   ];
+  static const _dailyXlsxBaseHeaders = [
+    'ID',
+    'Timestamp',
+    'Date',
+    'Time',
+    'Type',
+    'Name',
+    'Description',
+    'Reasoning',
+    'Duration Minutes',
+    'Temperature Value',
+    'Temperature Unit',
+    'Temperature Site',
+    'Temperature Comment',
+    'Icon',
+  ];
 
   Future<DataExportResult?> exportCsv() async {
     final rows =
@@ -72,6 +88,71 @@ class DataPortabilityService {
     }
 
     return DataExportResult(entryCount: rows.length, path: savedPath);
+  }
+
+  Future<DataExportResult?> exportDailyXlsxZip() async {
+    final rows =
+        await (_db.select(_db.diaryEntries)
+              ..where((t) => t.deletedAt.isNull())
+              ..orderBy([
+                (t) => OrderingTerm.asc(t.timestamp),
+                (t) => OrderingTerm.asc(t.name),
+              ]))
+            .get();
+
+    final entryIds = rows.map((row) => row.id).toList(growable: false);
+    final metricsByEntryId = await _loadMetricsByEntryId(entryIds);
+    final rowsByDate = <String, List<DiaryEntryRow>>{};
+
+    for (final row in rows) {
+      final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+      rowsByDate.putIfAbsent(_datePart(timestamp), () => []).add(row);
+    }
+
+    final now = DateTime.now();
+    final archive = Archive();
+
+    for (final entry in rowsByDate.entries) {
+      final xlsxBytes = _buildDailyXlsx(
+        date: entry.key,
+        rows: entry.value,
+        metricsByEntryId: metricsByEntryId,
+        createdAt: now,
+      );
+      archive.addFile(
+        _archiveBytesFile('daily-xlsx/nutrinutri-${entry.key}.xlsx', xlsxBytes),
+      );
+    }
+
+    if (rowsByDate.isEmpty) {
+      archive.addFile(
+        _archiveStringFile(
+          'README.txt',
+          'No diary entries were available when this daily XLSX export was created.',
+        ),
+      );
+    }
+
+    final zipBytes = ZipEncoder().encode(archive);
+    final fileName =
+        'nutrinutri-daily-xlsx-${_datePart(now)}-${_timePart(now)}.zip';
+    final savedPath = await FilePicker.saveFile(
+      dialogTitle: 'Export NutriNutri daily XLSX files',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      bytes: Uint8List.fromList(zipBytes),
+    );
+
+    if (savedPath == null && !kIsWeb) {
+      return null;
+    }
+
+    return DataExportResult(
+      entryCount: rows.length,
+      fileCount: rowsByDate.length,
+      path: savedPath,
+    );
   }
 
   Future<DataExportResult?> exportBackupZip() async {
@@ -526,6 +607,267 @@ class DataPortabilityService {
       buffer.writeln(cells.map(_csvCell).join(','));
     }
 
+    return buffer.toString();
+  }
+
+  Uint8List _buildDailyXlsx({
+    required String date,
+    required List<DiaryEntryRow> rows,
+    required Map<String, Map<NutritionMetricType, double>> metricsByEntryId,
+    required DateTime createdAt,
+  }) {
+    final workbook = Archive();
+    final sheetRows = <List<_XlsxCell>>[
+      [
+        ..._dailyXlsxBaseHeaders.map(_XlsxCell.text),
+        ...NutritionMetricType.values.map(
+          (metric) => _XlsxCell.text('${metric.label} (${metric.unit})'),
+        ),
+      ],
+    ];
+
+    for (final row in rows) {
+      final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+      final metrics =
+          metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{};
+      sheetRows.add([
+        _XlsxCell.text(row.id),
+        _XlsxCell.text(timestamp.toIso8601String()),
+        _XlsxCell.text(_datePart(timestamp)),
+        _XlsxCell.text(_clockPart(timestamp)),
+        _XlsxCell.text(_entryTypeName(row.type)),
+        _XlsxCell.text(row.name),
+        _XlsxCell.text(row.description ?? ''),
+        _XlsxCell.text(row.reasoning ?? ''),
+        _XlsxCell.number(row.durationMinutes),
+        _XlsxCell.number(row.temperatureValue),
+        _XlsxCell.text(row.temperatureUnit ?? ''),
+        _XlsxCell.text(row.temperatureSite ?? ''),
+        _XlsxCell.text(_temperatureComment(row)),
+        _XlsxCell.text(row.icon ?? ''),
+        ...NutritionMetricType.values.map(
+          (metric) => _XlsxCell.number(metrics[metric] ?? 0),
+        ),
+      ]);
+    }
+
+    final createdAtUtc = createdAt.toUtc().toIso8601String();
+    workbook
+      ..addFile(
+        _archiveStringFile(
+          '[Content_Types].xml',
+          _xlsxContentTypesXml(),
+        ),
+      )
+      ..addFile(_archiveStringFile('_rels/.rels', _xlsxRootRelsXml()))
+      ..addFile(
+        _archiveStringFile(
+          'docProps/app.xml',
+          _xlsxAppPropertiesXml(),
+        ),
+      )
+      ..addFile(
+        _archiveStringFile(
+          'docProps/core.xml',
+          _xlsxCorePropertiesXml(createdAtUtc),
+        ),
+      )
+      ..addFile(
+        _archiveStringFile(
+          'xl/_rels/workbook.xml.rels',
+          _xlsxWorkbookRelsXml(),
+        ),
+      )
+      ..addFile(_archiveStringFile('xl/workbook.xml', _xlsxWorkbookXml()))
+      ..addFile(_archiveStringFile('xl/styles.xml', _xlsxStylesXml()))
+      ..addFile(
+        _archiveStringFile(
+          'xl/worksheets/sheet1.xml',
+          _xlsxWorksheetXml(date, sheetRows),
+        ),
+      );
+
+    return Uint8List.fromList(ZipEncoder().encode(workbook));
+  }
+
+  String _xlsxContentTypesXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>''';
+  }
+
+  String _xlsxRootRelsXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>''';
+  }
+
+  String _xlsxWorkbookRelsXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>''';
+  }
+
+  String _xlsxWorkbookXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Entries" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>''';
+  }
+
+  String _xlsxAppPropertiesXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>NutriNutri</Application>
+</Properties>''';
+  }
+
+  String _xlsxCorePropertiesXml(String createdAtUtc) {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:creator>NutriNutri</dc:creator>
+  <cp:lastModifiedBy>NutriNutri</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">$createdAtUtc</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">$createdAtUtc</dcterms:modified>
+</cp:coreProperties>''';
+  }
+
+  String _xlsxStylesXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD9EAD3"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="1">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+  </cellXfs>
+  <cellStyles count="1">
+    <cellStyle name="Normal" xfId="0" builtinId="0"/>
+  </cellStyles>
+</styleSheet>''';
+  }
+
+  String _xlsxWorksheetXml(String date, List<List<_XlsxCell>> rows) {
+    final columnCount = rows.isEmpty
+        ? 1
+        : rows.map((row) => row.length).reduce((a, b) => a > b ? a : b);
+    final rowCount = rows.length;
+    final lastCellRef = '${_xlsxColumnName(columnCount - 1)}$rowCount';
+    final buffer = StringBuffer()
+      ..writeln('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>')
+      ..writeln(
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+      )
+      ..writeln('  <dimension ref="A1:$lastCellRef"/>')
+      ..writeln(
+        '  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>',
+      )
+      ..writeln('  <sheetFormatPr defaultRowHeight="15"/>')
+      ..writeln('  <cols>')
+      ..writeln('    <col min="1" max="1" width="30" customWidth="1"/>')
+      ..writeln('    <col min="2" max="4" width="18" customWidth="1"/>')
+      ..writeln('    <col min="5" max="5" width="14" customWidth="1"/>')
+      ..writeln('    <col min="6" max="8" width="28" customWidth="1"/>')
+      ..writeln('    <col min="9" max="$columnCount" width="16" customWidth="1"/>')
+      ..writeln('  </cols>')
+      ..writeln('  <sheetData>');
+
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      final excelRowIndex = rowIndex + 1;
+      final row = rows[rowIndex];
+      buffer.writeln('    <row r="$excelRowIndex">');
+      for (var columnIndex = 0; columnIndex < row.length; columnIndex++) {
+        final cell = row[columnIndex];
+        if (cell.isBlank) continue;
+
+        final ref = '${_xlsxColumnName(columnIndex)}$excelRowIndex';
+        final style = rowIndex == 0 ? ' s="1"' : '';
+        if (cell.isNumber) {
+          buffer.writeln('      <c r="$ref"$style><v>${cell.value}</v></c>');
+        } else {
+          buffer.writeln(
+            '      <c r="$ref" t="inlineStr"$style><is><t xml:space="preserve">${_xmlText(cell.value)}</t></is></c>',
+          );
+        }
+      }
+      buffer.writeln('    </row>');
+    }
+
+    buffer
+      ..writeln('  </sheetData>')
+      ..writeln('  <autoFilter ref="A1:$lastCellRef"/>')
+      ..writeln('  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>')
+      ..writeln('  <headerFooter><oddHeader>&amp;L$date&amp;RNutriNutri</oddHeader></headerFooter>')
+      ..writeln('</worksheet>');
+    return buffer.toString();
+  }
+
+  String _xlsxColumnName(int zeroBasedIndex) {
+    var index = zeroBasedIndex + 1;
+    final chars = <String>[];
+    while (index > 0) {
+      final remainder = (index - 1) % 26;
+      chars.insert(0, String.fromCharCode(65 + remainder));
+      index = (index - remainder - 1) ~/ 26;
+    }
+    return chars.join();
+  }
+
+  String _xmlText(Object? value) {
+    final raw = value?.toString() ?? '';
+    final buffer = StringBuffer();
+    for (final rune in raw.runes) {
+      if (rune != 0x09 && rune != 0x0A && rune != 0x0D && rune < 0x20) {
+        continue;
+      }
+
+      switch (rune) {
+        case 0x22:
+          buffer.write('&quot;');
+          break;
+        case 0x26:
+          buffer.write('&amp;');
+          break;
+        case 0x27:
+          buffer.write('&apos;');
+          break;
+        case 0x3C:
+          buffer.write('&lt;');
+          break;
+        case 0x3E:
+          buffer.write('&gt;');
+          break;
+        default:
+          buffer.writeCharCode(rune);
+      }
+    }
     return buffer.toString();
   }
 
@@ -1041,9 +1383,14 @@ class DataPortabilityService {
 }
 
 class DataExportResult {
-  const DataExportResult({required this.entryCount, required this.path});
+  const DataExportResult({
+    required this.entryCount,
+    required this.path,
+    this.fileCount,
+  });
 
   final int entryCount;
+  final int? fileCount;
   final String? path;
 }
 
@@ -1066,6 +1413,26 @@ class DataPortabilityException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class _XlsxCell {
+  const _XlsxCell._(this.value, {required this.isNumber});
+
+  factory _XlsxCell.text(String value) {
+    return _XlsxCell._(value, isNumber: false);
+  }
+
+  factory _XlsxCell.number(num? value) {
+    if (value == null || !value.isFinite) {
+      return const _XlsxCell._('', isNumber: false);
+    }
+    return _XlsxCell._(value, isNumber: true);
+  }
+
+  final Object value;
+  final bool isNumber;
+
+  bool get isBlank => value is String && (value as String).isEmpty;
 }
 
 class _ImportedCsvEntry {

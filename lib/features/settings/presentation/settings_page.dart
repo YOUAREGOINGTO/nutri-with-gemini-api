@@ -31,6 +31,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _isImportingData = false;
   bool _isExportingBackup = false;
   bool _isImportingBackup = false;
+  bool _isExportingDailyXlsx = false;
 
   @override
   void initState() {
@@ -210,6 +211,33 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  Future<void> _exportDailyXlsx() async {
+    if (_isExportingDailyXlsx) return;
+    setState(() => _isExportingDailyXlsx = true);
+    try {
+      final result = await _dataPortabilityService().exportDailyXlsxZip();
+      if (!mounted) return;
+
+      final fileCount = result?.fileCount ?? 0;
+      final fileLabel = fileCount == 1 ? 'file' : 'files';
+      final message = result == null
+          ? 'Daily XLSX export cancelled'
+          : 'Exported ${result.entryCount} entries to $fileCount daily XLSX $fileLabel';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Daily XLSX export failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingDailyXlsx = false);
+      }
+    }
+  }
+
   Future<void> _importData() async {
     if (_isImportingData) return;
     setState(() => _isImportingData = true);
@@ -338,6 +366,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       onImportData: () => unawaited(_importData()),
       onExportBackup: () => unawaited(_exportBackup()),
       onImportBackup: () => unawaited(_importBackup()),
+      onExportDailyXlsx: () => unawaited(_exportDailyXlsx()),
       onOpenLicenses: () => unawaited(_openLicenses()),
       onRefreshGeminiModels: () =>
           unawaited(_formManager.refreshGeminiModels()),
@@ -345,6 +374,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       isImportingData: _isImportingData,
       isExportingBackup: _isExportingBackup,
       isImportingBackup: _isImportingBackup,
+      isExportingDailyXlsx: _isExportingDailyXlsx,
     );
 
     return PopScope(
@@ -444,12 +474,14 @@ class _SettingsSections extends StatelessWidget {
     required this.onImportData,
     required this.onExportBackup,
     required this.onImportBackup,
+    required this.onExportDailyXlsx,
     required this.onOpenLicenses,
     required this.onRefreshGeminiModels,
     required this.isExportingData,
     required this.isImportingData,
     required this.isExportingBackup,
     required this.isImportingBackup,
+    required this.isExportingDailyXlsx,
   });
 
   final SettingsState state;
@@ -466,12 +498,14 @@ class _SettingsSections extends StatelessWidget {
   final VoidCallback onImportData;
   final VoidCallback onExportBackup;
   final VoidCallback onImportBackup;
+  final VoidCallback onExportDailyXlsx;
   final VoidCallback onOpenLicenses;
   final VoidCallback onRefreshGeminiModels;
   final bool isExportingData;
   final bool isImportingData;
   final bool isExportingBackup;
   final bool isImportingBackup;
+  final bool isExportingDailyXlsx;
 
   @override
   Widget build(BuildContext context) {
@@ -520,10 +554,12 @@ class _SettingsSections extends StatelessWidget {
           isImporting: isImportingData,
           isExportingBackup: isExportingBackup,
           isImportingBackup: isImportingBackup,
+          isExportingDailyXlsx: isExportingDailyXlsx,
           onExport: onExportData,
           onImport: onImportData,
           onExportBackup: onExportBackup,
           onImportBackup: onImportBackup,
+          onExportDailyXlsx: onExportDailyXlsx,
         ),
         const _SettingsSectionBreak(),
         _AboutSection(onOpenLicenses: onOpenLicenses),
@@ -547,20 +583,31 @@ class _DataSection extends StatelessWidget {
     required this.isImporting,
     required this.isExportingBackup,
     required this.isImportingBackup,
+    required this.isExportingDailyXlsx,
     required this.onExport,
     required this.onImport,
     required this.onExportBackup,
     required this.onImportBackup,
+    required this.onExportDailyXlsx,
   });
 
   final bool isExporting;
   final bool isImporting;
   final bool isExportingBackup;
   final bool isImportingBackup;
+  final bool isExportingDailyXlsx;
   final VoidCallback onExport;
   final VoidCallback onImport;
   final VoidCallback onExportBackup;
   final VoidCallback onImportBackup;
+  final VoidCallback onExportDailyXlsx;
+
+  bool get _isBusy =>
+      isExporting ||
+      isImporting ||
+      isExportingBackup ||
+      isImportingBackup ||
+      isExportingDailyXlsx;
 
   @override
   Widget build(BuildContext context) {
@@ -582,9 +629,7 @@ class _DataSection extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
-              ? null
-              : onExportBackup,
+          onTap: _isBusy ? null : onExportBackup,
         ),
         ListTile(
           title: const Text('Import ZIP Backup'),
@@ -596,9 +641,7 @@ class _DataSection extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
-              ? null
-              : onImportBackup,
+          onTap: _isBusy ? null : onImportBackup,
         ),
         ListTile(
           title: const Text('Export CSV'),
@@ -610,9 +653,19 @@ class _DataSection extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
-              ? null
-              : onExport,
+          onTap: _isBusy ? null : onExport,
+        ),
+        ListTile(
+          title: const Text('Export Daily XLSX Files'),
+          subtitle: const Text('Save one spreadsheet per diary date in a ZIP'),
+          leading: const Icon(Icons.table_chart_outlined),
+          trailing: isExportingDailyXlsx
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: _isBusy ? null : onExportDailyXlsx,
         ),
         ListTile(
           title: const Text('Import CSV'),
@@ -624,9 +677,7 @@ class _DataSection extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: isExporting || isImporting || isExportingBackup || isImportingBackup
-              ? null
-              : onImport,
+          onTap: _isBusy ? null : onImport,
         ),
       ],
     );
