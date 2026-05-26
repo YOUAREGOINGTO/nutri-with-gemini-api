@@ -247,8 +247,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
           SnackBar(
             content: Text(
               marked
-                  ? 'Added to AI review queue'
-                  : 'Removed from AI review queue',
+                  ? 'Added to review list'
+                  : 'Removed from review list',
             ),
           ),
         );

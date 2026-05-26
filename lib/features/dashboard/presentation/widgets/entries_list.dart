@@ -127,7 +127,7 @@ class EntriesList extends ConsumerWidget {
                     children: [
                       if (entry.markedForAiReview)
                         const Tooltip(
-                          message: 'AI review queue',
+                          message: 'Marked for review',
                           child: Icon(Icons.fact_check_outlined, size: 20),
                         ),
                       if (entry.markedForAiReview) const Gap(8),

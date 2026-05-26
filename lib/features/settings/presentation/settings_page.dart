@@ -164,11 +164,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   String _backupExportMessage(DataExportResult result) {
-    if (result.reviewEntryCount == 0) {
-      return 'Exported ${result.entryCount} entries to ZIP backup';
-    }
-    return 'Exported ${result.entryCount} entries with '
-        '${result.reviewEntryCount} AI review items';
+    return 'Exported ${result.entryCount} entries to ZIP backup';
   }
 
   Future<void> _exportData() async {
@@ -227,9 +223,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear AI Review Queue'),
+        title: const Text('Clear Review List'),
         content: const Text(
-          'Remove the AI review mark from every entry? Diary entries stay untouched.',
+          'Remove the review mark from every entry? Diary entries stay untouched.',
         ),
         actions: [
           TextButton(
@@ -252,7 +248,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           .clearAiReviewMarks();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cleared $cleared AI review marks')),
+        SnackBar(content: Text('Cleared $cleared review marks')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -736,8 +732,8 @@ class _DataSection extends StatelessWidget {
           onTap: _isBusy ? null : onExportDailyXlsx,
         ),
         ListTile(
-          title: const Text('Clear AI Review Queue'),
-          subtitle: const Text('Remove all ZIP review marks at once'),
+          title: const Text('Clear Review List'),
+          subtitle: const Text('Remove all review marks at once'),
           leading: const Icon(Icons.fact_check_outlined),
           trailing: isClearingAiReviewQueue
               ? const SizedBox.square(

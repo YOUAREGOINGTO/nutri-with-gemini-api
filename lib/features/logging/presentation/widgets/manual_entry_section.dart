@@ -126,7 +126,7 @@ class ManualEntrySection extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.fact_check_outlined),
-              title: const Text('AI review queue'),
+              title: const Text('Mark for Review'),
               subtitle: const Text(
                 'Include prompt, images, and AI history in ZIP backup',
               ),
