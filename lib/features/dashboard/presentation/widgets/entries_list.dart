@@ -125,6 +125,12 @@ class EntriesList extends ConsumerWidget {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (entry.markedForAiReview)
+                        const Tooltip(
+                          message: 'AI review queue',
+                          child: Icon(Icons.fact_check_outlined, size: 20),
+                        ),
+                      if (entry.markedForAiReview) const Gap(8),
                       if (isProcessing)
                         IconButton(
                           icon: const Icon(Icons.close),

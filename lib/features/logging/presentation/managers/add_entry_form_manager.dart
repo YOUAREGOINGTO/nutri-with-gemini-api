@@ -113,7 +113,10 @@ class AddEntryFormManager {
         .addOptimistic(description: descriptionController.text);
   }
 
-  Future<void> saveEntry(DiaryEntry? existingEntry) async {
+  Future<void> saveEntry(
+    DiaryEntry? existingEntry, {
+    bool? markedForAiReview,
+  }) async {
     final state = ref.read(addEntryControllerProvider);
     if (state.type == EntryType.temperature) {
       await ref
@@ -136,6 +139,7 @@ class AddEntryFormManager {
               entry.key: entry.value.text,
           },
           durationMinutes: durationController.text,
+          markedForAiReview: markedForAiReview,
         );
   }
 

@@ -25,6 +25,8 @@ class DiaryEntries extends Table with AuditColumns {
       integer().withDefault(const Constant(0))(); // FoodEntryStatus.index
   TextColumn get description => text().nullable()();
   TextColumn get reasoning => text().nullable()();
+  BoolColumn get markedForAiReview =>
+      boolean().withDefault(const Constant(false))();
   IntColumn get durationMinutes => integer().nullable()();
   RealColumn get temperatureValue => real().nullable()();
   TextColumn get temperatureUnit => text().nullable()();
@@ -141,7 +143,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -157,6 +159,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 4) {
         await _migrateFromV3();
+      }
+      if (from < 5) {
+        await _migrateFromV4();
       }
     },
   );
@@ -397,6 +402,12 @@ CREATE TABLE IF NOT EXISTS ai_chats (
     );
     await customStatement(
       'ALTER TABLE diary_entries ADD COLUMN temperature_site TEXT;',
+    );
+  }
+
+  Future<void> _migrateFromV4() async {
+    await customStatement(
+      'ALTER TABLE diary_entries ADD COLUMN marked_for_ai_review INTEGER NOT NULL DEFAULT 0;',
     );
   }
 }

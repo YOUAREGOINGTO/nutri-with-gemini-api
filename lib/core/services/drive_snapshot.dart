@@ -42,7 +42,7 @@ class DriveSnapshot {
   });
 
   /// Bump whenever the on-disk JSON shape changes.
-  static const int version = 5;
+  static const int version = 6;
 
   final Map<String, SyncedDiaryEntry> diaryEntries; // id -> row + metrics
   final SyncedUserProfile? userProfile; // id == 1
@@ -135,6 +135,7 @@ class DriveSnapshot {
     String? forcedId,
   }) {
     try {
+      map.putIfAbsent('markedForAiReview', () => false);
       final row = DiaryEntryRow.fromJson(map);
       if (forcedId == null || row.id == forcedId) {
         return row;

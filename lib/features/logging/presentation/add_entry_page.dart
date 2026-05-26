@@ -32,6 +32,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   late final AddEntryFormManager _formManager;
   bool _isApplyingAiCorrection = false;
   bool _isRerunningAi = false;
+  bool _isUpdatingAiReviewMark = false;
+  bool _markedForAiReview = false;
   String? _aiRequestLabel;
 
   @override
@@ -45,6 +47,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     );
 
     if (widget.existingEntry != null) {
+      _markedForAiReview = widget.existingEntry!.markedForAiReview;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _formManager.initializeWithEntry(widget.existingEntry!);
         unawaited(_loadAiRequestLabel(widget.existingEntry!.id));
@@ -104,7 +107,10 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
 
   Future<void> _saveEntry() async {
     try {
-      await _formManager.saveEntry(widget.existingEntry);
+      await _formManager.saveEntry(
+        widget.existingEntry,
+        markedForAiReview: _markedForAiReview,
+      );
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
@@ -164,7 +170,9 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   }
 
   Future<void> _applyAiCorrection() async {
-    final entry = widget.existingEntry;
+    final entry = widget.existingEntry?.copyWithAiReviewMark(
+      _markedForAiReview,
+    );
     if (entry == null) return;
     if (_formManager.correctionController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -196,7 +204,9 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   }
 
   Future<void> _rerunAiAnalysis() async {
-    final entry = widget.existingEntry;
+    final entry = widget.existingEntry?.copyWithAiReviewMark(
+      _markedForAiReview,
+    );
     if (entry == null) return;
 
     try {
@@ -217,6 +227,40 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     } finally {
       if (mounted) {
         setState(() => _isRerunningAi = false);
+      }
+    }
+  }
+
+  Future<void> _setAiReviewMark(bool marked) async {
+    final entry = widget.existingEntry;
+    if (entry == null) return;
+
+    setState(() => _isUpdatingAiReviewMark = true);
+    try {
+      await ref
+          .read(diaryControllerProvider.notifier)
+          .setAiReviewMark(entry, marked);
+      if (mounted) {
+        setState(() => _markedForAiReview = marked);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              marked
+                  ? 'Added to AI review queue'
+                  : 'Removed from AI review queue',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Review mark failed: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdatingAiReviewMark = false);
       }
     }
   }
@@ -340,6 +384,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   aiRequestLabel: _aiRequestLabel,
                   isApplyingAiCorrection: _isApplyingAiCorrection,
                   isRerunningAi: _isRerunningAi,
+                  markedForAiReview: _markedForAiReview,
+                  isUpdatingAiReviewMark: _isUpdatingAiReviewMark,
                   selectedIcon: state.selectedIcon,
                   selectedDate: state.selectedDate,
                   selectedTime: state.selectedTime,
@@ -359,6 +405,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   onApplyAiCorrection:
                       isEditing && !isExercise ? _applyAiCorrection : null,
                   onRerunAi: isEditing && !isExercise ? _rerunAiAnalysis : null,
+                  onAiReviewMarkChanged:
+                      isEditing && !isExercise ? _setAiReviewMark : null,
                   onDeleteConfirmed: () async {
                     try {
                       await _formManager.deleteEntry(widget.existingEntry!);

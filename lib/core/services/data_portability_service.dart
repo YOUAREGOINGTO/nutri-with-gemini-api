@@ -35,6 +35,7 @@ class DataPortabilityService {
     'name',
     'description',
     'reasoning',
+    'ai_review_queue',
     'duration_minutes',
     'temperature_value',
     'temperature_unit',
@@ -51,12 +52,19 @@ class DataPortabilityService {
     'Name',
     'Description',
     'Reasoning',
+    'AI Review Queue',
     'Duration Minutes',
     'Temperature Value',
     'Temperature Unit',
     'Temperature Site',
     'Temperature Comment',
     'Icon',
+  ];
+  static const _aiReviewChecklist = [
+    'Verify food identity and quantity against the prompt and images.',
+    'Check calories and nutrition metrics for obvious over/under estimates.',
+    'Compare AI reasoning with the exported evidence.',
+    'Suggest a better rerun prompt when the result needs another pass.',
   ];
 
   Future<DataExportResult?> exportCsv() async {
@@ -170,9 +178,11 @@ class DataPortabilityService {
     final imageRowsByEntryId = await _loadImagesByEntryId(entryIds);
     final chatRowsByEntryId = await _loadChatsByEntryId(entryIds);
 
+    final createdAt = DateTime.now();
     final archive = Archive();
     final manifestEntries = <Map<String, Object?>>[];
     final backupEntries = <Map<String, Object?>>[];
+    final reviewEntries = <Map<String, Object?>>[];
 
     for (final row in rows) {
       final imageEntries = <Map<String, Object?>>[];
@@ -210,10 +220,42 @@ class DataPortabilityService {
         );
       }
 
+      if (row.markedForAiReview) {
+        final metrics =
+            metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{};
+        final prompt = _analysisPromptFor(row, chats);
+        final promptPath = 'ai-review/prompts/${row.id}.txt';
+        archive.addFile(
+          _archiveStringFile(
+            promptPath,
+            _buildReviewPromptText(
+              row: row,
+              metrics: metrics,
+              prompt: prompt,
+              imageZipPaths: imageZipPaths,
+              chatPath: chatPath,
+            ),
+          ),
+        );
+        reviewEntries.add(
+          _buildReviewEntry(
+            row: row,
+            metrics: metrics,
+            prompt: prompt,
+            promptPath: promptPath,
+            imageEntries: imageEntries,
+            imageZipPaths: imageZipPaths,
+            chats: chats,
+            chatPath: chatPath,
+          ),
+        );
+      }
+
       manifestEntries.add({
         'entry_id': row.id,
         'image_file_paths': imageZipPaths,
         'chat_file_path': chatPath,
+        'marked_for_ai_review': row.markedForAiReview,
       });
 
       backupEntries.add({
@@ -233,11 +275,43 @@ class DataPortabilityService {
       });
     }
 
-    final createdAt = DateTime.now();
+    final reviewReadmePath = 'ai-review/README.txt';
+    final reviewQueuePath = 'ai-review/review_queue.json';
+    final reviewChecklistPath = 'ai-review/review_checklist.csv';
+    archive.addFile(
+      _archiveStringFile(
+        reviewReadmePath,
+        _buildReviewReadme(reviewEntries.length),
+      ),
+    );
+    archive.addFile(
+      _archiveStringFile(
+        reviewQueuePath,
+        _prettyJson({
+          'created_at': createdAt.toIso8601String(),
+          'marked_entry_count': reviewEntries.length,
+          'checklist': _aiReviewChecklist,
+          'entries': reviewEntries,
+        }),
+      ),
+    );
+    archive.addFile(
+      _archiveStringFile(
+        reviewChecklistPath,
+        _buildReviewChecklistCsv(reviewEntries),
+      ),
+    );
+
     final manifest = {
       'backup_version': _backupVersion,
       'app_version': _appVersion,
       'created_at': createdAt.toIso8601String(),
+      'ai_review': {
+        'marked_entry_count': reviewEntries.length,
+        'readme_path': reviewReadmePath,
+        'queue_path': reviewQueuePath,
+        'checklist_path': reviewChecklistPath,
+      },
       'entries': manifestEntries,
     };
 
@@ -268,7 +342,11 @@ class DataPortabilityService {
       return null;
     }
 
-    return DataExportResult(entryCount: rows.length, path: savedPath);
+    return DataExportResult(
+      entryCount: rows.length,
+      path: savedPath,
+      reviewEntryCount: reviewEntries.length,
+    );
   }
 
   Future<DataImportResult?> importCsv() async {
@@ -365,6 +443,7 @@ class DataPortabilityService {
                 status: Value(FoodEntryStatus.synced.index),
                 description: Value(entry.description),
                 reasoning: Value(entry.reasoning),
+                markedForAiReview: Value(entry.markedForAiReview),
                 durationMinutes: Value(entry.durationMinutes),
                 temperatureValue: Value(entry.temperatureValue),
                 temperatureUnit: Value(entry.temperatureUnit),
@@ -569,6 +648,240 @@ class DataPortabilityService {
     return chatsByEntryId;
   }
 
+  Map<String, Object?> _buildReviewEntry({
+    required DiaryEntryRow row,
+    required Map<NutritionMetricType, double> metrics,
+    required String prompt,
+    required String promptPath,
+    required List<Map<String, Object?>> imageEntries,
+    required List<String> imageZipPaths,
+    required List<AiChatRow> chats,
+    required String? chatPath,
+  }) {
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+    return {
+      'entry_id': row.id,
+      'date': _datePart(timestamp),
+      'time': _clockPart(timestamp),
+      'type': _entryTypeName(row.type),
+      'status': _entryStatusName(row.status),
+      'current_name': row.name,
+      'current_prompt': prompt,
+      'prompt_file_path': promptPath,
+      'image_count': imageZipPaths.length,
+      'image_file_paths': imageZipPaths,
+      'chat_file_path': chatPath,
+      'current_entry': _reviewEntryJson(row, metrics),
+      'images': imageEntries,
+      'analysis_requests': _reviewUserMessages(chats),
+      'assistant_results': _reviewAssistantMessages(chats),
+      'checklist': _aiReviewChecklist,
+    };
+  }
+
+  String _analysisPromptFor(DiaryEntryRow row, List<AiChatRow> chats) {
+    for (final chat in chats.reversed) {
+      if (chat.role == 'user' && _isAnalysisRequest(chat)) {
+        final content = chat.content.trim();
+        if (content.isNotEmpty) return content;
+      }
+    }
+
+    final description = row.description?.trim();
+    if (description != null && description.isNotEmpty) {
+      return description;
+    }
+
+    for (final chat in chats.reversed) {
+      if (chat.role == 'user') {
+        final content = chat.content.trim();
+        if (content.isNotEmpty) return content;
+      }
+    }
+
+    return row.name;
+  }
+
+  bool _isAnalysisRequest(AiChatRow chat) {
+    final metadata = _chatMetadata(chat);
+    final kind = metadata?['kind']?.toString();
+    return kind == 'initial_food_request' || kind == 'rerun_food_request';
+  }
+
+  Map<String, Object?> _reviewEntryJson(
+    DiaryEntryRow row,
+    Map<NutritionMetricType, double> metrics,
+  ) {
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+    return {
+      'id': row.id,
+      'name': row.name,
+      'timestamp': timestamp.toIso8601String(),
+      'type': _entryTypeName(row.type),
+      'status': _entryStatusName(row.status),
+      'description': row.description,
+      'reasoning': row.reasoning,
+      'icon': row.icon,
+      'metrics': _reviewMetricJson(metrics),
+    };
+  }
+
+  Map<String, double> _reviewMetricJson(
+    Map<NutritionMetricType, double> metrics,
+  ) {
+    return {
+      for (final metric in NutritionMetricType.values)
+        metric.key: _roundMetric(metrics[metric] ?? 0),
+    };
+  }
+
+  List<Map<String, Object?>> _reviewUserMessages(List<AiChatRow> chats) {
+    return chats
+        .where((chat) => chat.role == 'user')
+        .map(_reviewChatJson)
+        .toList(growable: false);
+  }
+
+  List<Map<String, Object?>> _reviewAssistantMessages(List<AiChatRow> chats) {
+    return chats
+        .where((chat) => chat.role == 'assistant')
+        .map(_reviewChatJson)
+        .toList(growable: false);
+  }
+
+  Map<String, Object?> _reviewChatJson(AiChatRow chat) {
+    return {
+      'id': chat.id,
+      'role': chat.role,
+      'content': chat.content,
+      'created_at': DateTime.fromMillisecondsSinceEpoch(
+        chat.createdAt,
+      ).toIso8601String(),
+      'metadata': _chatMetadata(chat),
+    };
+  }
+
+  Map<String, Object?>? _chatMetadata(AiChatRow chat) {
+    final raw = chat.metadataJson;
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, Object?>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  String _buildReviewPromptText({
+    required DiaryEntryRow row,
+    required Map<NutritionMetricType, double> metrics,
+    required String prompt,
+    required List<String> imageZipPaths,
+    required String? chatPath,
+  }) {
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+    final buffer = StringBuffer()
+      ..writeln('NutriNutri AI review')
+      ..writeln('Entry ID: ${row.id}')
+      ..writeln('Date: ${_datePart(timestamp)} ${_clockPart(timestamp)}')
+      ..writeln('Current name: ${row.name}')
+      ..writeln('Status: ${_entryStatusName(row.status)}')
+      ..writeln()
+      ..writeln('Prompt')
+      ..writeln(prompt.trim().isEmpty ? '(no text prompt)' : prompt.trim())
+      ..writeln()
+      ..writeln('Images in this ZIP');
+    if (imageZipPaths.isEmpty) {
+      buffer.writeln('(none)');
+    } else {
+      for (final path in imageZipPaths) {
+        buffer.writeln('- $path');
+      }
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('Chat history')
+      ..writeln(chatPath ?? '(none)')
+      ..writeln()
+      ..writeln('Current AI reasoning')
+      ..writeln(row.reasoning?.trim().isNotEmpty == true
+          ? row.reasoning!.trim()
+          : '(none)')
+      ..writeln()
+      ..writeln('Current metrics');
+    for (final entry in _reviewMetricJson(metrics).entries) {
+      buffer.writeln('- ${entry.key}: ${_formatNumber(entry.value)}');
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('Bot checklist');
+    for (final item in _aiReviewChecklist) {
+      buffer.writeln('- $item');
+    }
+
+    return buffer.toString();
+  }
+
+  String _buildReviewReadme(int reviewEntryCount) {
+    final buffer = StringBuffer()
+      ..writeln('NutriNutri AI review export')
+      ..writeln()
+      ..writeln('Marked entries: $reviewEntryCount')
+      ..writeln()
+      ..writeln('Files')
+      ..writeln('- ai-review/review_queue.json')
+      ..writeln('- ai-review/review_checklist.csv')
+      ..writeln('- ai-review/prompts/<entry-id>.txt')
+      ..writeln('- images/<entry-id>/image-*.jpg or original extension')
+      ..writeln('- chats/<entry-id>.json when chat history exists')
+      ..writeln()
+      ..writeln('Checklist');
+    for (final item in _aiReviewChecklist) {
+      buffer.writeln('- $item');
+    }
+    if (reviewEntryCount == 0) {
+      buffer
+        ..writeln()
+        ..writeln('No entries were marked for AI review when this ZIP was made.');
+    }
+    return buffer.toString();
+  }
+
+  String _buildReviewChecklistCsv(List<Map<String, Object?>> reviewEntries) {
+    const headers = [
+      'entry_id',
+      'date',
+      'time',
+      'status',
+      'current_name',
+      'current_prompt',
+      'image_count',
+      'prompt_file_path',
+      'chat_file_path',
+      'checklist',
+    ];
+    final buffer = StringBuffer()..writeln(headers.map(_csvCell).join(','));
+    for (final entry in reviewEntries) {
+      final cells = [
+        entry['entry_id'],
+        entry['date'],
+        entry['time'],
+        entry['status'],
+        entry['current_name'],
+        entry['current_prompt'],
+        entry['image_count'],
+        entry['prompt_file_path'],
+        entry['chat_file_path'],
+        _aiReviewChecklist.join(' | '),
+      ];
+      buffer.writeln(cells.map(_csvCell).join(','));
+    }
+    return buffer.toString();
+  }
+
   String _buildCsv(
     List<DiaryEntryRow> rows,
     Map<String, Map<NutritionMetricType, double>> metricsByEntryId,
@@ -592,6 +905,7 @@ class DataPortabilityService {
         row.name,
         row.description ?? '',
         row.reasoning ?? '',
+        row.markedForAiReview ? 'true' : 'false',
         row.durationMinutes?.toString() ?? '',
         row.temperatureValue == null
             ? ''
@@ -639,6 +953,7 @@ class DataPortabilityService {
         _XlsxCell.text(row.name),
         _XlsxCell.text(row.description ?? ''),
         _XlsxCell.text(row.reasoning ?? ''),
+        _XlsxCell.text(row.markedForAiReview ? 'true' : 'false'),
         _XlsxCell.number(row.durationMinutes),
         _XlsxCell.number(row.temperatureValue),
         _XlsxCell.text(row.temperatureUnit ?? ''),
@@ -882,6 +1197,9 @@ class DataPortabilityService {
     final timestamp = _parseTimestamp(row, headerIndex);
     final type = _parseEntryType(_cell(row, headerIndex, 'type'));
     final reasoning = _blankToNull(_cell(row, headerIndex, 'reasoning'));
+    final markedForAiReview = _parseBool(
+      _cell(row, headerIndex, 'ai_review_queue'),
+    );
     final icon = _blankToNull(_cell(row, headerIndex, 'icon'));
     final durationMinutes = _parseInt(
       _cell(row, headerIndex, 'duration_minutes'),
@@ -913,6 +1231,7 @@ class DataPortabilityService {
       timestamp: timestamp,
       description: description,
       reasoning: reasoning,
+      markedForAiReview: markedForAiReview,
       durationMinutes: durationMinutes,
       temperatureValue: temperatureValue,
       temperatureUnit: temperatureUnit,
@@ -970,7 +1289,9 @@ class DataPortabilityService {
 
     final DiaryEntryRow row;
     try {
-      row = DiaryEntryRow.fromJson(Map<String, dynamic>.from(rowRaw));
+      final rowJson = Map<String, dynamic>.from(rowRaw)
+        ..putIfAbsent('markedForAiReview', () => false);
+      row = DiaryEntryRow.fromJson(rowJson);
     } catch (_) {
       return null;
     }
@@ -1316,6 +1637,13 @@ class DataPortabilityService {
     return EntryType.food.name;
   }
 
+  String _entryStatusName(int status) {
+    if (status >= 0 && status < FoodEntryStatus.values.length) {
+      return FoodEntryStatus.values[status].name;
+    }
+    return FoodEntryStatus.synced.name;
+  }
+
   String _normalizeHeader(String value) {
     return value
         .replaceAll(String.fromCharCode(0xfeff), '')
@@ -1336,6 +1664,18 @@ class DataPortabilityService {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return null;
     return int.tryParse(trimmed);
+  }
+
+  bool _parseBool(String value) {
+    switch (value.trim().toLowerCase()) {
+      case 'true':
+      case 'yes':
+      case 'y':
+      case '1':
+        return true;
+      default:
+        return false;
+    }
   }
 
   double _parseDouble(String value) {
@@ -1387,10 +1727,12 @@ class DataExportResult {
     required this.entryCount,
     required this.path,
     this.fileCount,
+    this.reviewEntryCount = 0,
   });
 
   final int entryCount;
   final int? fileCount;
+  final int reviewEntryCount;
   final String? path;
 }
 
@@ -1443,6 +1785,7 @@ class _ImportedCsvEntry {
     required this.timestamp,
     required this.description,
     required this.reasoning,
+    required this.markedForAiReview,
     required this.durationMinutes,
     required this.temperatureValue,
     required this.temperatureUnit,
@@ -1457,6 +1800,7 @@ class _ImportedCsvEntry {
   final DateTime timestamp;
   final String? description;
   final String? reasoning;
+  final bool markedForAiReview;
   final int? durationMinutes;
   final double? temperatureValue;
   final String? temperatureUnit;

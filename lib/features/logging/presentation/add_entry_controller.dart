@@ -191,6 +191,7 @@ class AddEntryController extends _$AddEntryController {
     required String name,
     required Map<NutritionMetricType, String> metricValues,
     String? durationMinutes,
+    bool? markedForAiReview,
   }) async {
     final diaryService = ref.read(diaryServiceProvider);
 
@@ -237,6 +238,8 @@ class AddEntryController extends _$AddEntryController {
         status: existingEntry.status,
         description: existingEntry.description,
         reasoning: existingEntry.reasoning,
+        markedForAiReview:
+            markedForAiReview ?? existingEntry.markedForAiReview,
         durationMinutes: finalDuration,
       );
       await diaryService.updateEntry(updatedEntry);

@@ -103,6 +103,7 @@ class DiaryController extends _$DiaryController {
       icon: _defaultIconForType(EntryType.food),
       status: FoodEntryStatus.processing,
       description: prompt.isEmpty ? null : prompt,
+      markedForAiReview: entry.markedForAiReview,
     );
 
     await diaryService.updateEntry(processingEntry);
@@ -113,7 +114,7 @@ class DiaryController extends _$DiaryController {
           ? prompt
           : 'Food log request with ${entry.imagePaths.length} image(s).',
       metadataJson: jsonEncode({
-        'kind': 'initial_food_request',
+        'kind': 'rerun_food_request',
         'image_paths': entry.imagePaths,
       }),
     );
@@ -171,6 +172,20 @@ class DiaryController extends _$DiaryController {
     unawaited(_analyzeAndFill(processingEntry));
   }
 
+  Future<void> setAiReviewMark(DiaryEntry entry, bool marked) async {
+    await ref.read(diaryServiceProvider).setAiReviewMark(entry, marked);
+    _invalidateDay(entry.timestamp);
+  }
+
+  Future<int> clearAiReviewMarks() async {
+    final result = await ref.read(diaryServiceProvider).clearAiReviewMarks();
+    for (final date in result.affectedDates) {
+      ref.invalidate(dayEntriesProvider(date));
+      ref.invalidate(dailySummaryProvider(date));
+    }
+    return result.count;
+  }
+
   Future<void> correctFoodEntry({
     required DiaryEntry entry,
     required String correctionMessage,
@@ -204,6 +219,7 @@ class DiaryController extends _$DiaryController {
       status: FoodEntryStatus.processing,
       description: entry.description,
       reasoning: entry.reasoning,
+      markedForAiReview: entry.markedForAiReview,
       durationMinutes: entry.durationMinutes,
       temperatureValue: entry.temperatureValue,
       temperatureUnit: entry.temperatureUnit,
@@ -269,6 +285,7 @@ class DiaryController extends _$DiaryController {
       status: FoodEntryStatus.failed,
       description: entry.description,
       reasoning: _failureReason(lastError),
+      markedForAiReview: entry.markedForAiReview,
       durationMinutes: entry.durationMinutes,
       temperatureValue: entry.temperatureValue,
       temperatureUnit: entry.temperatureUnit,
@@ -369,6 +386,7 @@ class DiaryController extends _$DiaryController {
           ? _stringValue(normalizedResult['reasoning'])
           : entry.reasoning,
       status: FoodEntryStatus.synced,
+      markedForAiReview: entry.markedForAiReview,
       icon: _validateIcon(normalizedResult['icon'], entry.type),
       durationMinutes: entry.type == EntryType.exercise
           ? _toInt(normalizedResult['durationMinutes'])
@@ -508,6 +526,7 @@ class DiaryController extends _$DiaryController {
       reasoning: reasoning ?? entry.reasoning,
       status: status,
       icon: icon,
+      markedForAiReview: entry.markedForAiReview,
       durationMinutes: entry.durationMinutes,
       temperatureValue: entry.temperatureValue,
       temperatureUnit: entry.temperatureUnit,
@@ -573,6 +592,7 @@ class DiaryController extends _$DiaryController {
       'food_name': entry.name,
       'description': entry.description,
       'reasoning': entry.reasoning,
+      'marked_for_ai_review': entry.markedForAiReview,
       'timestamp': entry.timestamp.toIso8601String(),
       'metrics': {
         for (final metric in NutritionMetricType.values)

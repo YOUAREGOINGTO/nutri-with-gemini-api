@@ -18,6 +18,8 @@ class ManualEntrySection extends StatelessWidget {
     this.aiRequestLabel,
     this.isApplyingAiCorrection = false,
     this.isRerunningAi = false,
+    this.markedForAiReview = false,
+    this.isUpdatingAiReviewMark = false,
     required this.selectedIcon,
     required this.selectedDate,
     required this.selectedTime,
@@ -28,6 +30,7 @@ class ManualEntrySection extends StatelessWidget {
     required this.onSave,
     this.onApplyAiCorrection,
     this.onRerunAi,
+    this.onAiReviewMarkChanged,
     required this.onDeleteConfirmed,
   });
   final bool isEditing;
@@ -41,6 +44,8 @@ class ManualEntrySection extends StatelessWidget {
   final String? aiRequestLabel;
   final bool isApplyingAiCorrection;
   final bool isRerunningAi;
+  final bool markedForAiReview;
+  final bool isUpdatingAiReviewMark;
   final String selectedIcon;
   final DateTime selectedDate;
   final TimeOfDay selectedTime;
@@ -51,6 +56,7 @@ class ManualEntrySection extends StatelessWidget {
   final Future<void> Function() onSave;
   final Future<void> Function()? onApplyAiCorrection;
   final Future<void> Function()? onRerunAi;
+  final ValueChanged<bool>? onAiReviewMarkChanged;
   final Future<void> Function() onDeleteConfirmed;
 
   @override
@@ -101,6 +107,31 @@ class ManualEntrySection extends StatelessWidget {
               ],
             ),
           ],
+        ],
+        if (!isExercise && isEditing && onAiReviewMarkChanged != null) ...[
+          const Gap(16),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: Theme.of(context).dividerColor),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SwitchListTile(
+              value: markedForAiReview,
+              onChanged: isUpdatingAiReviewMark
+                  ? null
+                  : onAiReviewMarkChanged,
+              secondary: isUpdatingAiReviewMark
+                  ? const SizedBox.square(
+                      dimension: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.fact_check_outlined),
+              title: const Text('AI review queue'),
+              subtitle: const Text(
+                'Include prompt, images, and AI history in ZIP backup',
+              ),
+            ),
+          ),
         ],
         if (!isExercise &&
             isEditing &&

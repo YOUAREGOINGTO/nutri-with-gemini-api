@@ -44,6 +44,7 @@ class DiaryService {
       status: Value(entry.status.index),
       description: Value(entry.description),
       reasoning: Value(entry.reasoning),
+      markedForAiReview: Value(entry.markedForAiReview),
       durationMinutes: Value(entry.durationMinutes),
       temperatureValue: Value(entry.temperatureValue),
       temperatureUnit: Value(entry.temperatureUnit),
@@ -267,6 +268,64 @@ class DiaryService {
     unawaited(_syncService.requestSync());
   }
 
+  Future<void> setAiReviewMark(DiaryEntry entry, bool marked) async {
+    final deviceId = await _deviceId.getOrCreate();
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await (_db.update(_db.diaryEntries)..where((t) => t.id.equals(entry.id)))
+        .write(
+          DiaryEntriesCompanion(
+            markedForAiReview: Value(marked),
+            updatedAt: Value(now),
+            updatedBy: Value(deviceId),
+          ),
+        );
+    unawaited(_syncService.requestSync());
+  }
+
+  Future<({int count, Set<DateTime> affectedDates})> clearAiReviewMarks() async {
+    final deviceId = await _deviceId.getOrCreate();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final markedRows =
+        await (_db.select(_db.diaryEntries)
+              ..where(
+                (t) => t.deletedAt.isNull() & t.markedForAiReview.equals(true),
+              ))
+            .get();
+    final affectedDates = markedRows
+        .map((row) {
+          final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+          return DateTime(timestamp.year, timestamp.month, timestamp.day);
+        })
+        .toSet();
+
+    final updated = await (_db.update(_db.diaryEntries)
+          ..where(
+            (t) => t.deletedAt.isNull() & t.markedForAiReview.equals(true),
+          ))
+        .write(
+          DiaryEntriesCompanion(
+            markedForAiReview: const Value(false),
+            updatedAt: Value(now),
+            updatedBy: Value(deviceId),
+          ),
+        );
+    if (updated > 0) {
+      unawaited(_syncService.requestSync());
+    }
+    return (count: updated, affectedDates: affectedDates);
+  }
+
+  Future<int> aiReviewMarkCount() async {
+    final rows =
+        await (_db.select(_db.diaryEntries)
+              ..where(
+                (t) => t.deletedAt.isNull() & t.markedForAiReview.equals(true),
+              ))
+            .get();
+    return rows.length;
+  }
+
   Future<Map<String, double>> getSummary(DateTime date) async {
     final bounds = _dayBounds(date);
 
@@ -419,6 +478,7 @@ LIMIT 200
       status: _entryStatus(row.status),
       description: row.description,
       reasoning: row.reasoning,
+      markedForAiReview: row.markedForAiReview,
       durationMinutes: row.durationMinutes,
       temperatureValue: row.temperatureValue,
       temperatureUnit: row.temperatureUnit,

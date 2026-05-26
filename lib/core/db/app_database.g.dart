@@ -145,6 +145,20 @@ class $DiaryEntriesTable extends DiaryEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _markedForAiReviewMeta =
+      const VerificationMeta('markedForAiReview');
+  @override
+  late final GeneratedColumn<bool> markedForAiReview = GeneratedColumn<bool>(
+    'marked_for_ai_review',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("marked_for_ai_review" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _durationMinutesMeta = const VerificationMeta(
     'durationMinutes',
   );
@@ -204,6 +218,7 @@ class $DiaryEntriesTable extends DiaryEntries
     status,
     description,
     reasoning,
+    markedForAiReview,
     durationMinutes,
     temperatureValue,
     temperatureUnit,
@@ -312,6 +327,15 @@ class $DiaryEntriesTable extends DiaryEntries
         reasoning.isAcceptableOrUnknown(data['reasoning']!, _reasoningMeta),
       );
     }
+    if (data.containsKey('marked_for_ai_review')) {
+      context.handle(
+        _markedForAiReviewMeta,
+        markedForAiReview.isAcceptableOrUnknown(
+          data['marked_for_ai_review']!,
+          _markedForAiReviewMeta,
+        ),
+      );
+    }
     if (data.containsKey('duration_minutes')) {
       context.handle(
         _durationMinutesMeta,
@@ -409,6 +433,10 @@ class $DiaryEntriesTable extends DiaryEntries
         DriftSqlType.string,
         data['${effectivePrefix}reasoning'],
       ),
+      markedForAiReview: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}marked_for_ai_review'],
+      )!,
       durationMinutes: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}duration_minutes'],
@@ -448,6 +476,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
   final int status;
   final String? description;
   final String? reasoning;
+  final bool markedForAiReview;
   final int? durationMinutes;
   final double? temperatureValue;
   final String? temperatureUnit;
@@ -466,6 +495,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     required this.status,
     this.description,
     this.reasoning,
+    required this.markedForAiReview,
     this.durationMinutes,
     this.temperatureValue,
     this.temperatureUnit,
@@ -497,6 +527,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     if (!nullToAbsent || reasoning != null) {
       map['reasoning'] = Variable<String>(reasoning);
     }
+    map['marked_for_ai_review'] = Variable<bool>(markedForAiReview);
     if (!nullToAbsent || durationMinutes != null) {
       map['duration_minutes'] = Variable<int>(durationMinutes);
     }
@@ -535,6 +566,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       reasoning: reasoning == null && nullToAbsent
           ? const Value.absent()
           : Value(reasoning),
+      markedForAiReview: Value(markedForAiReview),
       durationMinutes: durationMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(durationMinutes),
@@ -569,6 +601,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       status: serializer.fromJson<int>(json['status']),
       description: serializer.fromJson<String?>(json['description']),
       reasoning: serializer.fromJson<String?>(json['reasoning']),
+      markedForAiReview: serializer.fromJson<bool>(
+        json['markedForAiReview'] ?? false,
+      ),
       durationMinutes: serializer.fromJson<int?>(json['durationMinutes']),
       temperatureValue: serializer.fromJson<double?>(
         json['temperatureValue'],
@@ -594,6 +629,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
       'status': serializer.toJson<int>(status),
       'description': serializer.toJson<String?>(description),
       'reasoning': serializer.toJson<String?>(reasoning),
+      'markedForAiReview': serializer.toJson<bool>(markedForAiReview),
       'durationMinutes': serializer.toJson<int?>(durationMinutes),
       'temperatureValue': serializer.toJson<double?>(temperatureValue),
       'temperatureUnit': serializer.toJson<String?>(temperatureUnit),
@@ -615,6 +651,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     int? status,
     Value<String?> description = const Value.absent(),
     Value<String?> reasoning = const Value.absent(),
+    bool? markedForAiReview,
     Value<int?> durationMinutes = const Value.absent(),
     Value<double?> temperatureValue = const Value.absent(),
     Value<String?> temperatureUnit = const Value.absent(),
@@ -633,6 +670,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     status: status ?? this.status,
     description: description.present ? description.value : this.description,
     reasoning: reasoning.present ? reasoning.value : this.reasoning,
+    markedForAiReview: markedForAiReview ?? this.markedForAiReview,
     durationMinutes: durationMinutes.present
         ? durationMinutes.value
         : this.durationMinutes,
@@ -665,6 +703,9 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
           ? data.description.value
           : this.description,
       reasoning: data.reasoning.present ? data.reasoning.value : this.reasoning,
+      markedForAiReview: data.markedForAiReview.present
+          ? data.markedForAiReview.value
+          : this.markedForAiReview,
       durationMinutes: data.durationMinutes.present
           ? data.durationMinutes.value
           : this.durationMinutes,
@@ -696,6 +737,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
           ..write('status: $status, ')
           ..write('description: $description, ')
           ..write('reasoning: $reasoning, ')
+          ..write('markedForAiReview: $markedForAiReview, ')
           ..write('durationMinutes: $durationMinutes, ')
           ..write('temperatureValue: $temperatureValue, ')
           ..write('temperatureUnit: $temperatureUnit, ')
@@ -719,6 +761,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
     status,
     description,
     reasoning,
+    markedForAiReview,
     durationMinutes,
     temperatureValue,
     temperatureUnit,
@@ -741,6 +784,7 @@ class DiaryEntryRow extends DataClass implements Insertable<DiaryEntryRow> {
           other.status == this.status &&
           other.description == this.description &&
           other.reasoning == this.reasoning &&
+          other.markedForAiReview == this.markedForAiReview &&
           other.durationMinutes == this.durationMinutes &&
           other.temperatureValue == this.temperatureValue &&
           other.temperatureUnit == this.temperatureUnit &&
@@ -761,6 +805,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
   final Value<int> status;
   final Value<String?> description;
   final Value<String?> reasoning;
+  final Value<bool> markedForAiReview;
   final Value<int?> durationMinutes;
   final Value<double?> temperatureValue;
   final Value<String?> temperatureUnit;
@@ -780,6 +825,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     this.status = const Value.absent(),
     this.description = const Value.absent(),
     this.reasoning = const Value.absent(),
+    this.markedForAiReview = const Value.absent(),
     this.durationMinutes = const Value.absent(),
     this.temperatureValue = const Value.absent(),
     this.temperatureUnit = const Value.absent(),
@@ -800,6 +846,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     this.status = const Value.absent(),
     this.description = const Value.absent(),
     this.reasoning = const Value.absent(),
+    this.markedForAiReview = const Value.absent(),
     this.durationMinutes = const Value.absent(),
     this.temperatureValue = const Value.absent(),
     this.temperatureUnit = const Value.absent(),
@@ -824,6 +871,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     Expression<int>? status,
     Expression<String>? description,
     Expression<String>? reasoning,
+    Expression<bool>? markedForAiReview,
     Expression<int>? durationMinutes,
     Expression<double>? temperatureValue,
     Expression<String>? temperatureUnit,
@@ -844,6 +892,8 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
       if (status != null) 'status': status,
       if (description != null) 'description': description,
       if (reasoning != null) 'reasoning': reasoning,
+      if (markedForAiReview != null)
+        'marked_for_ai_review': markedForAiReview,
       if (durationMinutes != null) 'duration_minutes': durationMinutes,
       if (temperatureValue != null) 'temperature_value': temperatureValue,
       if (temperatureUnit != null) 'temperature_unit': temperatureUnit,
@@ -866,6 +916,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     Value<int>? status,
     Value<String?>? description,
     Value<String?>? reasoning,
+    Value<bool>? markedForAiReview,
     Value<int?>? durationMinutes,
     Value<double?>? temperatureValue,
     Value<String?>? temperatureUnit,
@@ -886,6 +937,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
       status: status ?? this.status,
       description: description ?? this.description,
       reasoning: reasoning ?? this.reasoning,
+      markedForAiReview: markedForAiReview ?? this.markedForAiReview,
       durationMinutes: durationMinutes ?? this.durationMinutes,
       temperatureValue: temperatureValue ?? this.temperatureValue,
       temperatureUnit: temperatureUnit ?? this.temperatureUnit,
@@ -936,6 +988,9 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
     if (reasoning.present) {
       map['reasoning'] = Variable<String>(reasoning.value);
     }
+    if (markedForAiReview.present) {
+      map['marked_for_ai_review'] = Variable<bool>(markedForAiReview.value);
+    }
     if (durationMinutes.present) {
       map['duration_minutes'] = Variable<int>(durationMinutes.value);
     }
@@ -970,6 +1025,7 @@ class DiaryEntriesCompanion extends UpdateCompanion<DiaryEntryRow> {
           ..write('status: $status, ')
           ..write('description: $description, ')
           ..write('reasoning: $reasoning, ')
+          ..write('markedForAiReview: $markedForAiReview, ')
           ..write('durationMinutes: $durationMinutes, ')
           ..write('temperatureValue: $temperatureValue, ')
           ..write('temperatureUnit: $temperatureUnit, ')

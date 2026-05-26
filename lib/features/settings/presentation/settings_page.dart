@@ -12,6 +12,7 @@ import 'package:nutrinutri/core/services/google_user_info.dart';
 import 'package:nutrinutri/core/utils/platform_helper.dart';
 import 'package:nutrinutri/core/widgets/responsive_center.dart';
 import 'package:nutrinutri/features/dashboard/presentation/dashboard_providers.dart';
+import 'package:nutrinutri/features/diary/application/diary_controller.dart';
 import 'package:nutrinutri/features/settings/presentation/managers/settings_form_manager.dart';
 import 'package:nutrinutri/features/settings/presentation/settings_controller.dart';
 import 'package:nutrinutri/features/settings/presentation/widgets/ai_configuration_section.dart';
@@ -32,6 +33,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _isExportingBackup = false;
   bool _isImportingBackup = false;
   bool _isExportingDailyXlsx = false;
+  bool _isClearingAiReviewQueue = false;
 
   @override
   void initState() {
@@ -161,6 +163,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  String _backupExportMessage(DataExportResult result) {
+    if (result.reviewEntryCount == 0) {
+      return 'Exported ${result.entryCount} entries to ZIP backup';
+    }
+    return 'Exported ${result.entryCount} entries with '
+        '${result.reviewEntryCount} AI review items';
+  }
+
   Future<void> _exportData() async {
     if (_isExportingData) return;
     setState(() => _isExportingData = true);
@@ -195,7 +205,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
       final message = result == null
           ? 'Backup export cancelled'
-          : 'Exported ${result.entryCount} entries to ZIP backup';
+          : _backupExportMessage(result);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -207,6 +217,51 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } finally {
       if (mounted) {
         setState(() => _isExportingBackup = false);
+      }
+    }
+  }
+
+  Future<void> _clearAiReviewQueue() async {
+    if (_isClearingAiReviewQueue) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear AI Review Queue'),
+        content: const Text(
+          'Remove the AI review mark from every entry? Diary entries stay untouched.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isClearingAiReviewQueue = true);
+    try {
+      final cleared = await ref
+          .read(diaryControllerProvider.notifier)
+          .clearAiReviewMarks();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cleared $cleared AI review marks')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Clear failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isClearingAiReviewQueue = false);
       }
     }
   }
@@ -367,6 +422,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       onExportBackup: () => unawaited(_exportBackup()),
       onImportBackup: () => unawaited(_importBackup()),
       onExportDailyXlsx: () => unawaited(_exportDailyXlsx()),
+      onClearAiReviewQueue: () => unawaited(_clearAiReviewQueue()),
       onOpenLicenses: () => unawaited(_openLicenses()),
       onRefreshGeminiModels: () =>
           unawaited(_formManager.refreshGeminiModels()),
@@ -375,6 +431,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       isExportingBackup: _isExportingBackup,
       isImportingBackup: _isImportingBackup,
       isExportingDailyXlsx: _isExportingDailyXlsx,
+      isClearingAiReviewQueue: _isClearingAiReviewQueue,
     );
 
     return PopScope(
@@ -475,6 +532,7 @@ class _SettingsSections extends StatelessWidget {
     required this.onExportBackup,
     required this.onImportBackup,
     required this.onExportDailyXlsx,
+    required this.onClearAiReviewQueue,
     required this.onOpenLicenses,
     required this.onRefreshGeminiModels,
     required this.isExportingData,
@@ -482,6 +540,7 @@ class _SettingsSections extends StatelessWidget {
     required this.isExportingBackup,
     required this.isImportingBackup,
     required this.isExportingDailyXlsx,
+    required this.isClearingAiReviewQueue,
   });
 
   final SettingsState state;
@@ -499,6 +558,7 @@ class _SettingsSections extends StatelessWidget {
   final VoidCallback onExportBackup;
   final VoidCallback onImportBackup;
   final VoidCallback onExportDailyXlsx;
+  final VoidCallback onClearAiReviewQueue;
   final VoidCallback onOpenLicenses;
   final VoidCallback onRefreshGeminiModels;
   final bool isExportingData;
@@ -506,6 +566,7 @@ class _SettingsSections extends StatelessWidget {
   final bool isExportingBackup;
   final bool isImportingBackup;
   final bool isExportingDailyXlsx;
+  final bool isClearingAiReviewQueue;
 
   @override
   Widget build(BuildContext context) {
@@ -555,11 +616,13 @@ class _SettingsSections extends StatelessWidget {
           isExportingBackup: isExportingBackup,
           isImportingBackup: isImportingBackup,
           isExportingDailyXlsx: isExportingDailyXlsx,
+          isClearingAiReviewQueue: isClearingAiReviewQueue,
           onExport: onExportData,
           onImport: onImportData,
           onExportBackup: onExportBackup,
           onImportBackup: onImportBackup,
           onExportDailyXlsx: onExportDailyXlsx,
+          onClearAiReviewQueue: onClearAiReviewQueue,
         ),
         const _SettingsSectionBreak(),
         _AboutSection(onOpenLicenses: onOpenLicenses),
@@ -584,11 +647,13 @@ class _DataSection extends StatelessWidget {
     required this.isExportingBackup,
     required this.isImportingBackup,
     required this.isExportingDailyXlsx,
+    required this.isClearingAiReviewQueue,
     required this.onExport,
     required this.onImport,
     required this.onExportBackup,
     required this.onImportBackup,
     required this.onExportDailyXlsx,
+    required this.onClearAiReviewQueue,
   });
 
   final bool isExporting;
@@ -596,18 +661,21 @@ class _DataSection extends StatelessWidget {
   final bool isExportingBackup;
   final bool isImportingBackup;
   final bool isExportingDailyXlsx;
+  final bool isClearingAiReviewQueue;
   final VoidCallback onExport;
   final VoidCallback onImport;
   final VoidCallback onExportBackup;
   final VoidCallback onImportBackup;
   final VoidCallback onExportDailyXlsx;
+  final VoidCallback onClearAiReviewQueue;
 
   bool get _isBusy =>
       isExporting ||
       isImporting ||
       isExportingBackup ||
       isImportingBackup ||
-      isExportingDailyXlsx;
+      isExportingDailyXlsx ||
+      isClearingAiReviewQueue;
 
   @override
   Widget build(BuildContext context) {
@@ -666,6 +734,18 @@ class _DataSection extends StatelessWidget {
                 )
               : const Icon(Icons.chevron_right),
           onTap: _isBusy ? null : onExportDailyXlsx,
+        ),
+        ListTile(
+          title: const Text('Clear AI Review Queue'),
+          subtitle: const Text('Remove all ZIP review marks at once'),
+          leading: const Icon(Icons.fact_check_outlined),
+          trailing: isClearingAiReviewQueue
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: _isBusy ? null : onClearAiReviewQueue,
         ),
         ListTile(
           title: const Text('Import CSV'),

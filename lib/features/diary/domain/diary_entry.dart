@@ -13,6 +13,7 @@ class DiaryEntry {
     this.status = FoodEntryStatus.synced,
     this.description,
     this.reasoning,
+    this.markedForAiReview = false,
     this.durationMinutes,
     this.temperatureValue,
     this.temperatureUnit,
@@ -35,6 +36,7 @@ class DiaryEntry {
   final FoodEntryStatus status;
   final String? description;
   final String? reasoning;
+  final bool markedForAiReview;
   final int? durationMinutes;
   final double? temperatureValue;
   final String? temperatureUnit;
@@ -50,6 +52,27 @@ class DiaryEntry {
   double get fats => metricValue(NutritionMetricType.fats);
 
   bool get isTemperature => type == EntryType.temperature;
+
+  DiaryEntry copyWithAiReviewMark(bool marked) {
+    return DiaryEntry(
+      id: id,
+      name: name,
+      type: type,
+      metrics: metrics,
+      timestamp: timestamp,
+      imagePath: imagePath,
+      imagePaths: imagePaths,
+      icon: icon,
+      status: status,
+      description: description,
+      reasoning: reasoning,
+      markedForAiReview: marked,
+      durationMinutes: durationMinutes,
+      temperatureValue: temperatureValue,
+      temperatureUnit: temperatureUnit,
+      temperatureSite: temperatureSite,
+    );
+  }
 
   double? get temperatureCelsius {
     final value = temperatureValue;
