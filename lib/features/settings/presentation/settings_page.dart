@@ -266,14 +266,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     if (_isExportingDailyXlsx) return;
     setState(() => _isExportingDailyXlsx = true);
     try {
-      final result = await _dataPortabilityService().exportDailyXlsxZip();
+      final result = await _dataPortabilityService().exportXlsx();
       if (!mounted) return;
 
-      final fileCount = result?.fileCount ?? 0;
-      final fileLabel = fileCount == 1 ? 'file' : 'files';
       final message = result == null
-          ? 'Daily XLSX export cancelled'
-          : 'Exported ${result.entryCount} entries to $fileCount daily XLSX $fileLabel';
+          ? 'XLSX export cancelled'
+          : 'Exported ${result.entryCount} entries to XLSX';
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -281,7 +279,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Daily XLSX export failed: $e')));
+      ).showSnackBar(SnackBar(content: Text('XLSX export failed: $e')));
     } finally {
       if (mounted) {
         setState(() => _isExportingDailyXlsx = false);
@@ -720,8 +718,8 @@ class _DataSection extends StatelessWidget {
           onTap: _isBusy ? null : onExport,
         ),
         ListTile(
-          title: const Text('Export Daily XLSX Files'),
-          subtitle: const Text('Save one spreadsheet per diary date in a ZIP'),
+          title: const Text('Export XLSX'),
+          subtitle: const Text('Save diary entries as one spreadsheet'),
           leading: const Icon(Icons.table_chart_outlined),
           trailing: isExportingDailyXlsx
               ? const SizedBox.square(

@@ -91,7 +91,7 @@ class DataPortabilityService {
     return DataExportResult(entryCount: rows.length, path: savedPath);
   }
 
-  Future<DataExportResult?> exportDailyXlsxZip() async {
+  Future<DataExportResult?> exportXlsx() async {
     final rows =
         await (_db.select(_db.diaryEntries)
               ..where((t) => t.deletedAt.isNull())
@@ -103,46 +103,21 @@ class DataPortabilityService {
 
     final entryIds = rows.map((row) => row.id).toList(growable: false);
     final metricsByEntryId = await _loadMetricsByEntryId(entryIds);
-    final rowsByDate = <String, List<DiaryEntryRow>>{};
-
-    for (final row in rows) {
-      final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
-      rowsByDate.putIfAbsent(_datePart(timestamp), () => []).add(row);
-    }
-
     final now = DateTime.now();
-    final archive = Archive();
-
-    for (final entry in rowsByDate.entries) {
-      final xlsxBytes = _buildDailyXlsx(
-        date: entry.key,
-        rows: entry.value,
-        metricsByEntryId: metricsByEntryId,
-        createdAt: now,
-      );
-      archive.addFile(
-        _archiveBytesFile('daily-xlsx/nutrinutri-${entry.key}.xlsx', xlsxBytes),
-      );
-    }
-
-    if (rowsByDate.isEmpty) {
-      archive.addFile(
-        _archiveStringFile(
-          'README.txt',
-          'No diary entries were available when this daily XLSX export was created.',
-        ),
-      );
-    }
-
-    final zipBytes = ZipEncoder().encode(archive);
+    final xlsxBytes = _buildDailyXlsx(
+      date: 'All entries',
+      rows: rows,
+      metricsByEntryId: metricsByEntryId,
+      createdAt: now,
+    );
     final fileName =
-        'nutrinutri-daily-xlsx-${_datePart(now)}-${_timePart(now)}.zip';
+        'nutrinutri-export-${_datePart(now)}-${_timePart(now)}.xlsx';
     final savedPath = await FilePicker.saveFile(
-      dialogTitle: 'Export NutriNutri daily XLSX files',
+      dialogTitle: 'Export NutriNutri XLSX',
       fileName: fileName,
       type: FileType.custom,
-      allowedExtensions: const ['zip'],
-      bytes: Uint8List.fromList(zipBytes),
+      allowedExtensions: const ['xlsx'],
+      bytes: xlsxBytes,
     );
 
     if (savedPath == null && !kIsWeb) {
@@ -151,7 +126,7 @@ class DataPortabilityService {
 
     return DataExportResult(
       entryCount: rows.length,
-      fileCount: rowsByDate.length,
+      fileCount: 1,
       path: savedPath,
     );
   }
