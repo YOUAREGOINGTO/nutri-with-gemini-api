@@ -266,12 +266,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     if (_isExportingDailyXlsx) return;
     setState(() => _isExportingDailyXlsx = true);
     try {
-      final result = await _dataPortabilityService().exportXlsx();
+      final result = await _dataPortabilityService().exportDailyXlsx();
       if (!mounted) return;
 
+      final dayCount = result?.dayCount ?? 0;
+      final dayLabel = dayCount == 1 ? 'day' : 'days';
       final message = result == null
           ? 'XLSX export cancelled'
-          : 'Exported ${result.entryCount} entries to XLSX';
+          : 'Exported $dayCount $dayLabel to daily XLSX';
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -718,8 +720,8 @@ class _DataSection extends StatelessWidget {
           onTap: _isBusy ? null : onExport,
         ),
         ListTile(
-          title: const Text('Export XLSX'),
-          subtitle: const Text('Save diary entries as one spreadsheet'),
+          title: const Text('Export Daily XLSX'),
+          subtitle: const Text('Save daily nutrition totals as one spreadsheet'),
           leading: const Icon(Icons.table_chart_outlined),
           trailing: isExportingDailyXlsx
               ? const SizedBox.square(

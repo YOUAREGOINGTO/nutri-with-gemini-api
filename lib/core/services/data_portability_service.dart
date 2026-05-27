@@ -44,21 +44,8 @@ class DataPortabilityService {
     'icon',
   ];
   static const _dailyXlsxBaseHeaders = [
-    'ID',
-    'Timestamp',
     'Date',
-    'Time',
-    'Type',
-    'Name',
-    'Description',
-    'Reasoning',
-    'Mark for Review',
-    'Duration Minutes',
-    'Temperature Value',
-    'Temperature Unit',
-    'Temperature Site',
-    'Temperature Comment',
-    'Icon',
+    'Entries',
   ];
   Future<DataExportResult?> exportCsv() async {
     final rows =
@@ -91,7 +78,7 @@ class DataPortabilityService {
     return DataExportResult(entryCount: rows.length, path: savedPath);
   }
 
-  Future<DataExportResult?> exportXlsx() async {
+  Future<DataExportResult?> exportDailyXlsx() async {
     final rows =
         await (_db.select(_db.diaryEntries)
               ..where((t) => t.deletedAt.isNull())
@@ -103,17 +90,22 @@ class DataPortabilityService {
 
     final entryIds = rows.map((row) => row.id).toList(growable: false);
     final metricsByEntryId = await _loadMetricsByEntryId(entryIds);
+    final rowsByDate = <String, List<DiaryEntryRow>>{};
+    for (final row in rows) {
+      final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+      rowsByDate.putIfAbsent(_datePart(timestamp), () => []).add(row);
+    }
+
     final now = DateTime.now();
-    final xlsxBytes = _buildDailyXlsx(
-      date: 'All entries',
-      rows: rows,
+    final xlsxBytes = _buildDailySummaryXlsx(
+      rowsByDate: rowsByDate,
       metricsByEntryId: metricsByEntryId,
       createdAt: now,
     );
     final fileName =
-        'nutrinutri-export-${_datePart(now)}-${_timePart(now)}.xlsx';
+        'nutrinutri-daily-summary-${_datePart(now)}-${_timePart(now)}.xlsx';
     final savedPath = await FilePicker.saveFile(
-      dialogTitle: 'Export NutriNutri XLSX',
+      dialogTitle: 'Export NutriNutri daily XLSX',
       fileName: fileName,
       type: FileType.custom,
       allowedExtensions: const ['xlsx'],
@@ -126,7 +118,7 @@ class DataPortabilityService {
 
     return DataExportResult(
       entryCount: rows.length,
-      fileCount: 1,
+      dayCount: rowsByDate.length,
       path: savedPath,
     );
   }
@@ -884,9 +876,8 @@ class DataPortabilityService {
     return buffer.toString();
   }
 
-  Uint8List _buildDailyXlsx({
-    required String date,
-    required List<DiaryEntryRow> rows,
+  Uint8List _buildDailySummaryXlsx({
+    required Map<String, List<DiaryEntryRow>> rowsByDate,
     required Map<String, Map<NutritionMetricType, double>> metricsByEntryId,
     required DateTime createdAt,
   }) {
@@ -900,28 +891,26 @@ class DataPortabilityService {
       ],
     ];
 
-    for (final row in rows) {
-      final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
-      final metrics =
-          metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{};
+    final dates = rowsByDate.keys.toList()..sort();
+    for (final date in dates) {
+      final rows = rowsByDate[date] ?? const <DiaryEntryRow>[];
+      final totals = <NutritionMetricType, double>{
+        for (final metric in NutritionMetricType.values) metric: 0,
+      };
+
+      for (final row in rows) {
+        final metrics =
+            metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{};
+        for (final metric in NutritionMetricType.values) {
+          totals[metric] = (totals[metric] ?? 0) + (metrics[metric] ?? 0);
+        }
+      }
+
       sheetRows.add([
-        _XlsxCell.text(row.id),
-        _XlsxCell.text(timestamp.toIso8601String()),
-        _XlsxCell.text(_datePart(timestamp)),
-        _XlsxCell.text(_clockPart(timestamp)),
-        _XlsxCell.text(_entryTypeName(row.type)),
-        _XlsxCell.text(row.name),
-        _XlsxCell.text(row.description ?? ''),
-        _XlsxCell.text(row.reasoning ?? ''),
-        _XlsxCell.text(row.markedForAiReview ? 'true' : 'false'),
-        _XlsxCell.number(row.durationMinutes),
-        _XlsxCell.number(row.temperatureValue),
-        _XlsxCell.text(row.temperatureUnit ?? ''),
-        _XlsxCell.text(row.temperatureSite ?? ''),
-        _XlsxCell.text(_temperatureComment(row)),
-        _XlsxCell.text(row.icon ?? ''),
+        _XlsxCell.text(date),
+        _XlsxCell.number(rows.length),
         ...NutritionMetricType.values.map(
-          (metric) => _XlsxCell.number(metrics[metric] ?? 0),
+          (metric) => _XlsxCell.number(_roundMetric(totals[metric] ?? 0)),
         ),
       ]);
     }
@@ -958,7 +947,7 @@ class DataPortabilityService {
       ..addFile(
         _archiveStringFile(
           'xl/worksheets/sheet1.xml',
-          _xlsxWorksheetXml(date, sheetRows),
+          _xlsxWorksheetXml('Daily Summary', sheetRows),
         ),
       );
 
@@ -999,7 +988,7 @@ class DataPortabilityService {
     return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Entries" sheetId="1" r:id="rId1"/>
+    <sheet name="Daily Summary" sheetId="1" r:id="rId1"/>
   </sheets>
 </workbook>''';
   }
@@ -1689,12 +1678,12 @@ class DataExportResult {
   const DataExportResult({
     required this.entryCount,
     required this.path,
-    this.fileCount,
+    this.dayCount,
     this.reviewEntryCount = 0,
   });
 
   final int entryCount;
-  final int? fileCount;
+  final int? dayCount;
   final int reviewEntryCount;
   final String? path;
 }
