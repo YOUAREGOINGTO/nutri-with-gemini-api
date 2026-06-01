@@ -24,6 +24,10 @@ No endless food databases. No barcode hunting. No subscriptions. Just a tool tha
 ## ✨ What's inside
 
 - **📸 AI Auto-Logging** Photograph your plate or describe your meal. The AI breaks it down into ingredients, estimates portions, and logs everything for you.
+- **AI Reasoning** See the user-facing calculation basis behind each AI estimate: detected food, portion assumptions, visible ingredients, and why the calories/macros make sense.
+- **Run Again** Re-run AI analysis on an existing food entry when you want a fresh estimate from the latest prompt, images, model, or settings.
+- **AI Follow-Up Corrections** Chat with the AI again on an existing entry to add corrections, clarify portions, or refine the nutrition result without starting over.
+- **Mark for AI Review** Flag entries that need a second look, then clear the review list once you've checked them.
 - **🥗 Full Nutrition Picture** Calories, protein, carbs, fats, fiber, sodium, caffeine, water, and more. Track what matters to *you*.
 - **🏃 Activity Tracking** Log workouts and see calories burned alongside what you've eaten.
 - **🔒 Privacy-First** Your health data is yours. No analytics, no tracking, no selling - ever.
@@ -59,6 +63,9 @@ That's it, you're ready to log your first meal.
 
 - [x] Activity tracking with calorie burn
 - [x] Extended metrics (fiber, sodium, caffeine, water…)
+- [x] AI reasoning explanations for food estimates
+- [x] Re-run and follow-up correction flow for AI-generated entries
+- [x] Mark entries for AI review
 - [ ] **UX polish** — repeated meals, quick stats, smoother flows
 - [ ] **Charts & trends** — weekly and monthly insights into your intake
 - [ ] **Recipe Builder** — AI-generated recipes tailored to your preferences, saved to your diary

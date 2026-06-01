@@ -1,0 +1,50 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        env:
+          NUTRINUTRI_GEMINI_TEST_KEY: ${{ secrets.NUTRINUTRI_GEMINI_TEST_KEY }}
+          NUTRINUTRI_GEMINI_BACKUP_TEST_KEY: ${{ secrets.NUTRINUTRI_GEMINI_BACKUP_TEST_KEY }}
+        run: |
+          if [ -d test ] && find test -name "*_test.dart" -print -quit | grep -q .; then
+            flutter test
+          else
+            echo "No Flutter tests found."
+          fi
+
+      - name: Build iOS app without signing
+        run: |
+          build_number=$((1000 + GITHUB_RUN_NUMBER))
+          flutter build ios --release --no-codesign --build-number "$build_number"
+
+      - name: Package unsigned IPA
+        run: bash tool/package_unsigned_ios_ipa.sh
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: nutrinutri-ios-unsigned-ipa
+          path: nutrinutri-ios-unsigned.ipa
