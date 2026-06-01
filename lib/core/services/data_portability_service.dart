@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import 'package:drift/drift.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:mime/mime.dart';
 import 'package:nutrinutri/core/db/app_database.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
@@ -23,6 +24,9 @@ class DataPortabilityService {
   final DeviceIdService _deviceId;
   final SyncService _syncService;
 
+  static const _fileExportChannel = MethodChannel(
+    'sk.popelis.nutrinutri/file_export',
+  );
   static const _uuid = Uuid();
   static const _backupVersion = 1;
   static const _appVersion = '0.1.1+2';
@@ -63,10 +67,9 @@ class DataPortabilityService {
     final now = DateTime.now();
     final fileName = 'nutrinutri-export-${_datePart(now)}-${_timePart(now)}.csv';
 
-    final savedPath = await FilePicker.saveFile(
+    final savedPath = await _saveFileBytes(
       dialogTitle: 'Export NutriNutri data',
       fileName: fileName,
-      type: FileType.custom,
       allowedExtensions: const ['csv'],
       bytes: Uint8List.fromList(utf8.encode(csv)),
     );
@@ -104,10 +107,9 @@ class DataPortabilityService {
     );
     final fileName =
         'nutrinutri-daily-summary-${_datePart(now)}-${_timePart(now)}.xlsx';
-    final savedPath = await FilePicker.saveFile(
+    final savedPath = await _saveFileBytes(
       dialogTitle: 'Export NutriNutri daily XLSX',
       fileName: fileName,
-      type: FileType.custom,
       allowedExtensions: const ['xlsx'],
       bytes: xlsxBytes,
     );
@@ -298,16 +300,19 @@ class DataPortabilityService {
       _archiveStringFile('entries.csv', _buildCsv(rows, metricsByEntryId)),
     );
 
-    final zipBytes = ZipEncoder().encode(archive);
+    final zipBytes = _encodeZipArchive(
+      archive,
+      requiredFilePath: 'entries.json',
+      errorContext: 'backup ZIP',
+    );
 
     final fileName =
         'nutrinutri-backup-${_datePart(createdAt)}-${_timePart(createdAt)}.zip';
-    final savedPath = await FilePicker.saveFile(
+    final savedPath = await _saveFileBytes(
       dialogTitle: 'Export NutriNutri backup',
       fileName: fileName,
-      type: FileType.custom,
       allowedExtensions: const ['zip'],
-      bytes: Uint8List.fromList(zipBytes),
+      bytes: zipBytes,
     );
 
     if (savedPath == null && !kIsWeb) {
@@ -951,7 +956,11 @@ class DataPortabilityService {
         ),
       );
 
-    return Uint8List.fromList(ZipEncoder().encode(workbook));
+    return _encodeZipArchive(
+      workbook,
+      requiredFilePath: 'xl/workbook.xml',
+      errorContext: 'daily XLSX',
+    );
   }
 
   String _xlsxContentTypesXml() {
@@ -1415,6 +1424,146 @@ class DataPortabilityService {
   ArchiveFile _archiveBytesFile(String path, List<int> bytes) {
     final data = Uint8List.fromList(bytes);
     return ArchiveFile(path, data.length, data);
+  }
+
+  Uint8List _encodeZipArchive(
+    Archive archive, {
+    required String requiredFilePath,
+    required String errorContext,
+  }) {
+    final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive));
+    if (zipBytes.isEmpty) {
+      throw DataPortabilityException(
+        'The $errorContext encoder produced an empty file.',
+      );
+    }
+
+    try {
+      final decoded = ZipDecoder().decodeBytes(zipBytes);
+      final requiredFile = _archiveFile(decoded, requiredFilePath);
+      final requiredBytes = requiredFile?.readBytes();
+      if (decoded.files.isEmpty ||
+          requiredFile == null ||
+          requiredBytes == null ||
+          requiredBytes.isEmpty) {
+        throw DataPortabilityException(
+          'The $errorContext encoder produced an invalid archive.',
+        );
+      }
+    } on DataPortabilityException {
+      rethrow;
+    } catch (error) {
+      throw DataPortabilityException(
+        'The $errorContext encoder produced a file that could not be read: '
+        '$error',
+      );
+    }
+
+    return zipBytes;
+  }
+
+  Future<String?> _saveFileBytes({
+    required String dialogTitle,
+    required String fileName,
+    required List<String> allowedExtensions,
+    required Uint8List bytes,
+  }) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return _saveAndroidFileBytes(
+        fileName: fileName,
+        allowedExtensions: allowedExtensions,
+        bytes: bytes,
+      );
+    }
+
+    final savedPath = await FilePicker.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: allowedExtensions,
+      bytes: bytes,
+    );
+
+    if (savedPath == null ||
+        kIsWeb ||
+        !_canVerifySavedFilePath() ||
+        _isVirtualFileUri(savedPath)) {
+      return savedPath;
+    }
+
+    await _ensureSavedFileHasBytes(savedPath, bytes);
+    return savedPath;
+  }
+
+  Future<String?> _saveAndroidFileBytes({
+    required String fileName,
+    required List<String> allowedExtensions,
+    required Uint8List bytes,
+  }) async {
+    final result = await _fileExportChannel.invokeMethod<String>('saveFile', {
+      'fileName': fileName,
+      'mimeType': _mimeTypeForExtensions(allowedExtensions),
+      'bytes': bytes,
+    });
+    return result;
+  }
+
+  String _mimeTypeForExtensions(List<String> extensions) {
+    final normalized = extensions
+        .map((extension) => extension.trim().toLowerCase())
+        .where((extension) => extension.isNotEmpty)
+        .toSet();
+    if (normalized.contains('zip')) return 'application/zip';
+    if (normalized.contains('csv')) return 'text/csv';
+    if (normalized.contains('xlsx')) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+    return 'application/octet-stream';
+  }
+
+  bool _canVerifySavedFilePath() {
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.linux ||
+      TargetPlatform.macOS ||
+      TargetPlatform.windows => true,
+      _ => false,
+    };
+  }
+
+  bool _isVirtualFileUri(String path) {
+    final lowerPath = path.toLowerCase();
+    return lowerPath.startsWith('content://') ||
+        lowerPath.startsWith('fileprovider://');
+  }
+
+  Future<void> _ensureSavedFileHasBytes(String path, Uint8List bytes) async {
+    final file = File(path);
+    try {
+      final exists = await file.exists();
+      final currentLength = exists ? await file.length() : -1;
+      if (currentLength != bytes.length) {
+        final parent = file.parent;
+        if (!await parent.exists()) {
+          await parent.create(recursive: true);
+        }
+        await file.writeAsBytes(bytes, flush: true);
+      }
+
+      final verifiedLength = await file.length();
+      if (verifiedLength != bytes.length) {
+        throw DataPortabilityException(
+          'The exported file was saved with $verifiedLength bytes, expected '
+          '${bytes.length} bytes.',
+        );
+      }
+    } on DataPortabilityException {
+      rethrow;
+    } on FileSystemException catch (error) {
+      throw DataPortabilityException(
+        'The selected export file could not be written correctly: '
+        '${error.message}',
+      );
+    }
   }
 
   String _safeImageExtension(String path) {
