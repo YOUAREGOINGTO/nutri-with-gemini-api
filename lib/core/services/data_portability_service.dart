@@ -1476,6 +1476,21 @@ class DataPortabilityService {
       );
     }
 
+    if (!kIsWeb && _canVerifySavedFilePath()) {
+      final savedPath = await FilePicker.saveFile(
+        dialogTitle: dialogTitle,
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: allowedExtensions,
+      );
+      if (savedPath == null || _isVirtualFileUri(savedPath)) {
+        return savedPath;
+      }
+
+      await _ensureSavedFileHasBytes(savedPath, bytes);
+      return savedPath;
+    }
+
     final savedPath = await FilePicker.saveFile(
       dialogTitle: dialogTitle,
       fileName: fileName,
@@ -1500,12 +1515,37 @@ class DataPortabilityService {
     required List<String> allowedExtensions,
     required Uint8List bytes,
   }) async {
-    final result = await _fileExportChannel.invokeMethod<String>('saveFile', {
-      'fileName': fileName,
-      'mimeType': _mimeTypeForExtensions(allowedExtensions),
-      'bytes': bytes,
-    });
-    return result;
+    final tempDirectory = await getTemporaryDirectory();
+    final tempFile = File(
+      p.join(tempDirectory.path, '${_uuid.v4()}-${p.basename(fileName)}'),
+    );
+
+    try {
+      await tempFile.writeAsBytes(bytes, flush: true);
+      final tempLength = await tempFile.length();
+      if (tempLength != bytes.length) {
+        throw DataPortabilityException(
+          'The temporary export file was written with $tempLength bytes, '
+          'expected ${bytes.length} bytes.',
+        );
+      }
+
+      final result = await _fileExportChannel.invokeMethod<String>('saveFile', {
+        'fileName': fileName,
+        'mimeType': _mimeTypeForExtensions(allowedExtensions),
+        'sourcePath': tempFile.path,
+        'byteLength': bytes.length,
+      });
+      return result;
+    } finally {
+      if (await tempFile.exists()) {
+        try {
+          await tempFile.delete();
+        } on FileSystemException {
+          // The native Android side may already have cleaned up this temp file.
+        }
+      }
+    }
   }
 
   String _mimeTypeForExtensions(List<String> extensions) {
