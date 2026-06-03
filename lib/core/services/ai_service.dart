@@ -268,6 +268,13 @@ Return exactly one JSON object in this shape. Replace type names with actual JSO
 - estimated_quantity should briefly summarize the quantity used.
 </portion_rules>
 
+<portion_uncertainty>
+- If the user does not provide exact cups, grams, or ingredients, estimate from visible area, visible depth, plate/container size, and comparison objects such as spoon, hand, cup, tray compartment, bowl, or packaging.
+- Do not require exact household measures from the user. Use photos to infer portion size, and mention uncertainty briefly in reasoning when depth or scale is unclear.
+- If an angled photo is provided, use it to refine food depth and mound height. A wide top-down image estimates area; an angled image estimates depth.
+- For spread-out foods such as rice, noodles, pasta, poha, upma, curries, snacks, or mixed plates, distinguish a thin spread from a deep mound before choosing calories.
+</portion_uncertainty>
+
 <component_calculation>
 - For mixed meals, estimate each calorie-bearing component separately before summing.
 - Components can include main starch, bread, protein, gravy/sauce, fried/oily items, salad/vegetables, toppings, sweets/snacks, and drinks when explicitly logged.
@@ -293,6 +300,7 @@ Return exactly one JSON object in this shape. Replace type names with actual JSO
 <reasoning_rules>
 - In the final JSON, write reasoning before metrics as shown in output_schema.
 - reasoning should be concise but complete user-facing calculation basis, not hidden chain-of-thought. Include only needed details: what the input appears to be, how the logged quantity was interpreted, which visible or typical ingredients/cooking fats affected the estimate, how multiple images or unrelated images were handled, and why the calorie/macro estimate or zero values make sense.
+- Briefly state the visual basis for portion size when useful, such as thin spread, medium mound, full bowl, half tray compartment, or visible depth from an angled image.
 - The metric values must be consistent with the quantity and ingredient assumptions summarized in reasoning.
 </reasoning_rules>
 
