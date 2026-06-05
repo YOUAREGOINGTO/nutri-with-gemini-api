@@ -164,7 +164,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   String _backupExportMessage(DataExportResult result) {
-    return 'Exported ${result.entryCount} entries to ZIP backup';
+    return _exportMessage(
+      'Exported ${result.entryCount} entries to ZIP backup',
+      result,
+    );
+  }
+
+  String _exportMessage(String message, DataExportResult result) {
+    return '$message (${_formatByteCount(result.byteCount)})';
+  }
+
+  String _formatByteCount(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(kb >= 100 ? 0 : 1)} KB';
+    final mb = kb / 1024;
+    if (mb < 1024) return '${mb.toStringAsFixed(mb >= 100 ? 0 : 1)} MB';
+    final gb = mb / 1024;
+    return '${gb.toStringAsFixed(gb >= 100 ? 0 : 1)} GB';
   }
 
   Future<void> _exportData() async {
@@ -176,7 +193,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
       final message = result == null
           ? 'Export cancelled'
-          : 'Exported ${result.entryCount} entries to CSV';
+          : _exportMessage(
+              'Exported ${result.entryCount} entries to CSV',
+              result,
+            );
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -273,7 +293,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final dayLabel = dayCount == 1 ? 'day' : 'days';
       final message = result == null
           ? 'XLSX export cancelled'
-          : 'Exported $dayCount $dayLabel to daily XLSX';
+          : _exportMessage(
+              'Exported $dayCount $dayLabel to daily XLSX',
+              result,
+            );
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));

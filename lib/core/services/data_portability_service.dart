@@ -29,7 +29,7 @@ class DataPortabilityService {
   );
   static const _uuid = Uuid();
   static const _backupVersion = 1;
-  static const _appVersion = '0.1.1+2';
+  static const _appVersion = '0.1.2+3';
   static const _baseHeaders = [
     'id',
     'timestamp',
@@ -64,6 +64,7 @@ class DataPortabilityService {
     final entryIds = rows.map((row) => row.id).toList(growable: false);
     final metricsByEntryId = await _loadMetricsByEntryId(entryIds);
     final csv = _buildCsv(rows, metricsByEntryId);
+    final csvBytes = Uint8List.fromList(utf8.encode(csv));
     final now = DateTime.now();
     final fileName = 'nutrinutri-export-${_datePart(now)}-${_timePart(now)}.csv';
 
@@ -71,14 +72,18 @@ class DataPortabilityService {
       dialogTitle: 'Export NutriNutri data',
       fileName: fileName,
       allowedExtensions: const ['csv'],
-      bytes: Uint8List.fromList(utf8.encode(csv)),
+      bytes: csvBytes,
     );
 
     if (savedPath == null && !kIsWeb) {
       return null;
     }
 
-    return DataExportResult(entryCount: rows.length, path: savedPath);
+    return DataExportResult(
+      entryCount: rows.length,
+      path: savedPath,
+      byteCount: csvBytes.length,
+    );
   }
 
   Future<DataExportResult?> exportDailyXlsx() async {
@@ -122,6 +127,7 @@ class DataPortabilityService {
       entryCount: rows.length,
       dayCount: rowsByDate.length,
       path: savedPath,
+      byteCount: xlsxBytes.length,
     );
   }
 
@@ -322,6 +328,7 @@ class DataPortabilityService {
     return DataExportResult(
       entryCount: rows.length,
       path: savedPath,
+      byteCount: zipBytes.length,
       reviewEntryCount: reviewEntries.length,
     );
   }
@@ -1867,6 +1874,7 @@ class DataExportResult {
   const DataExportResult({
     required this.entryCount,
     required this.path,
+    required this.byteCount,
     this.dayCount,
     this.reviewEntryCount = 0,
   });
@@ -1875,6 +1883,7 @@ class DataExportResult {
   final int? dayCount;
   final int reviewEntryCount;
   final String? path;
+  final int byteCount;
 }
 
 class DataImportResult {
