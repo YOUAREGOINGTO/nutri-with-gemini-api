@@ -29,7 +29,7 @@ class DataPortabilityService {
   );
   static const _uuid = Uuid();
   static const _backupVersion = 1;
-  static const _appVersion = '0.1.2+3';
+  static const _appVersion = '0.1.3+4';
   static const _baseHeaders = [
     'id',
     'timestamp',
@@ -51,6 +51,16 @@ class DataPortabilityService {
     'Date',
     'Entries',
   ];
+  static const _temperatureCsvHeaders = [
+    'id',
+    'timestamp',
+    'date',
+    'time',
+    'temperature_value',
+    'temperature_unit',
+    'temperature_site',
+    'comment',
+  ];
   Future<DataExportResult?> exportCsv() async {
     final rows =
         await (_db.select(_db.diaryEntries)
@@ -70,6 +80,44 @@ class DataPortabilityService {
 
     final savedPath = await _saveFileBytes(
       dialogTitle: 'Export NutriNutri data',
+      fileName: fileName,
+      allowedExtensions: const ['csv'],
+      bytes: csvBytes,
+    );
+
+    if (savedPath == null && !kIsWeb) {
+      return null;
+    }
+
+    return DataExportResult(
+      entryCount: rows.length,
+      path: savedPath,
+      byteCount: csvBytes.length,
+    );
+  }
+
+  Future<DataExportResult?> exportTemperatureCsv() async {
+    final rows =
+        await (_db.select(_db.diaryEntries)
+              ..where(
+                (t) =>
+                    t.deletedAt.isNull() &
+                    t.type.equals(EntryType.temperature.index),
+              )
+              ..orderBy([
+                (t) => OrderingTerm.asc(t.timestamp),
+                (t) => OrderingTerm.asc(t.name),
+              ]))
+            .get();
+
+    final csv = _buildTemperatureCsv(rows);
+    final csvBytes = Uint8List.fromList(utf8.encode(csv));
+    final now = DateTime.now();
+    final fileName =
+        'nutrinutri-temperature-export-${_datePart(now)}-${_timePart(now)}.csv';
+
+    final savedPath = await _saveFileBytes(
+      dialogTitle: 'Export NutriNutri temperature CSV',
       fileName: fileName,
       allowedExtensions: const ['csv'],
       bytes: csvBytes,
@@ -881,6 +929,30 @@ class DataPortabilityService {
         ...NutritionMetricType.values.map(
           (metric) => _formatNumber(metrics[metric] ?? 0),
         ),
+      ];
+      buffer.writeln(cells.map(_csvCell).join(','));
+    }
+
+    return buffer.toString();
+  }
+
+  String _buildTemperatureCsv(List<DiaryEntryRow> rows) {
+    final buffer = StringBuffer()
+      ..writeln(_temperatureCsvHeaders.map(_csvCell).join(','));
+
+    for (final row in rows) {
+      final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
+      final cells = [
+        row.id,
+        timestamp.toIso8601String(),
+        _datePart(timestamp),
+        _clockPart(timestamp),
+        row.temperatureValue == null
+            ? ''
+            : _formatNumber(row.temperatureValue!),
+        row.temperatureUnit ?? '',
+        row.temperatureSite ?? '',
+        _temperatureComment(row),
       ];
       buffer.writeln(cells.map(_csvCell).join(','));
     }

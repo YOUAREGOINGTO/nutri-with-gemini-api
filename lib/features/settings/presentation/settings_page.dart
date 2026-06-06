@@ -33,6 +33,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _isExportingBackup = false;
   bool _isImportingBackup = false;
   bool _isExportingDailyXlsx = false;
+  bool _isExportingTemperatureCsv = false;
   bool _isClearingAiReviewQueue = false;
 
   @override
@@ -312,6 +313,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  Future<void> _exportTemperatureCsv() async {
+    if (_isExportingTemperatureCsv) return;
+    setState(() => _isExportingTemperatureCsv = true);
+    try {
+      final result = await _dataPortabilityService().exportTemperatureCsv();
+      if (!mounted) return;
+
+      final readingLabel = result?.entryCount == 1 ? 'reading' : 'readings';
+      final message = result == null
+          ? 'Temperature export cancelled'
+          : _exportMessage(
+              'Exported ${result.entryCount} temperature $readingLabel to CSV',
+              result,
+            );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Temperature export failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingTemperatureCsv = false);
+      }
+    }
+  }
+
   Future<void> _importData() async {
     if (_isImportingData) return;
     setState(() => _isImportingData = true);
@@ -441,6 +471,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       onExportBackup: () => unawaited(_exportBackup()),
       onImportBackup: () => unawaited(_importBackup()),
       onExportDailyXlsx: () => unawaited(_exportDailyXlsx()),
+      onExportTemperatureCsv: () => unawaited(_exportTemperatureCsv()),
       onClearAiReviewQueue: () => unawaited(_clearAiReviewQueue()),
       onOpenLicenses: () => unawaited(_openLicenses()),
       onRefreshGeminiModels: () =>
@@ -450,6 +481,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       isExportingBackup: _isExportingBackup,
       isImportingBackup: _isImportingBackup,
       isExportingDailyXlsx: _isExportingDailyXlsx,
+      isExportingTemperatureCsv: _isExportingTemperatureCsv,
       isClearingAiReviewQueue: _isClearingAiReviewQueue,
     );
 
@@ -551,6 +583,7 @@ class _SettingsSections extends StatelessWidget {
     required this.onExportBackup,
     required this.onImportBackup,
     required this.onExportDailyXlsx,
+    required this.onExportTemperatureCsv,
     required this.onClearAiReviewQueue,
     required this.onOpenLicenses,
     required this.onRefreshGeminiModels,
@@ -559,6 +592,7 @@ class _SettingsSections extends StatelessWidget {
     required this.isExportingBackup,
     required this.isImportingBackup,
     required this.isExportingDailyXlsx,
+    required this.isExportingTemperatureCsv,
     required this.isClearingAiReviewQueue,
   });
 
@@ -577,6 +611,7 @@ class _SettingsSections extends StatelessWidget {
   final VoidCallback onExportBackup;
   final VoidCallback onImportBackup;
   final VoidCallback onExportDailyXlsx;
+  final VoidCallback onExportTemperatureCsv;
   final VoidCallback onClearAiReviewQueue;
   final VoidCallback onOpenLicenses;
   final VoidCallback onRefreshGeminiModels;
@@ -585,6 +620,7 @@ class _SettingsSections extends StatelessWidget {
   final bool isExportingBackup;
   final bool isImportingBackup;
   final bool isExportingDailyXlsx;
+  final bool isExportingTemperatureCsv;
   final bool isClearingAiReviewQueue;
 
   @override
@@ -635,12 +671,14 @@ class _SettingsSections extends StatelessWidget {
           isExportingBackup: isExportingBackup,
           isImportingBackup: isImportingBackup,
           isExportingDailyXlsx: isExportingDailyXlsx,
+          isExportingTemperatureCsv: isExportingTemperatureCsv,
           isClearingAiReviewQueue: isClearingAiReviewQueue,
           onExport: onExportData,
           onImport: onImportData,
           onExportBackup: onExportBackup,
           onImportBackup: onImportBackup,
           onExportDailyXlsx: onExportDailyXlsx,
+          onExportTemperatureCsv: onExportTemperatureCsv,
           onClearAiReviewQueue: onClearAiReviewQueue,
         ),
         const _SettingsSectionBreak(),
@@ -666,12 +704,14 @@ class _DataSection extends StatelessWidget {
     required this.isExportingBackup,
     required this.isImportingBackup,
     required this.isExportingDailyXlsx,
+    required this.isExportingTemperatureCsv,
     required this.isClearingAiReviewQueue,
     required this.onExport,
     required this.onImport,
     required this.onExportBackup,
     required this.onImportBackup,
     required this.onExportDailyXlsx,
+    required this.onExportTemperatureCsv,
     required this.onClearAiReviewQueue,
   });
 
@@ -680,12 +720,14 @@ class _DataSection extends StatelessWidget {
   final bool isExportingBackup;
   final bool isImportingBackup;
   final bool isExportingDailyXlsx;
+  final bool isExportingTemperatureCsv;
   final bool isClearingAiReviewQueue;
   final VoidCallback onExport;
   final VoidCallback onImport;
   final VoidCallback onExportBackup;
   final VoidCallback onImportBackup;
   final VoidCallback onExportDailyXlsx;
+  final VoidCallback onExportTemperatureCsv;
   final VoidCallback onClearAiReviewQueue;
 
   bool get _isBusy =>
@@ -694,6 +736,7 @@ class _DataSection extends StatelessWidget {
       isExportingBackup ||
       isImportingBackup ||
       isExportingDailyXlsx ||
+      isExportingTemperatureCsv ||
       isClearingAiReviewQueue;
 
   @override
@@ -753,6 +796,18 @@ class _DataSection extends StatelessWidget {
                 )
               : const Icon(Icons.chevron_right),
           onTap: _isBusy ? null : onExportDailyXlsx,
+        ),
+        ListTile(
+          title: const Text('Export Temperature CSV'),
+          subtitle: const Text('Save readings with time and comments'),
+          leading: const Icon(Icons.device_thermostat),
+          trailing: isExportingTemperatureCsv
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: _isBusy ? null : onExportTemperatureCsv,
         ),
         ListTile(
           title: const Text('Clear Review List'),
