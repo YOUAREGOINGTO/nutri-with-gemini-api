@@ -278,7 +278,6 @@ Return exactly one JSON object in this shape. Replace type names with actual JSO
 <component_calculation>
 - For mixed meals, estimate each calorie-bearing component separately before summing.
 - Components can include main starch, bread, protein, gravy/sauce, fried/oily items, salad/vegetables, toppings, sweets/snacks, and drinks when explicitly logged.
-- For rice-dominant meals, the rice portion usually drives calories and carbs. If the visible portion is a full plate or large mound, do not use a small side-rice assumption.
 - For regional mixed plates, estimate each visible component separately and sum only after interpreting user text plus leftover/progress images.
 - Keep estimated_quantity and metrics consistent with the component assumptions.
 - Keep estimated_quantity and metrics consistent. If the written quantity implies a larger starch, fat, or protein portion than the numbers reflect, adjust the metrics before returning JSON.
