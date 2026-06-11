@@ -9,6 +9,15 @@ enum NutritionMetricType {
   sodium,
   caffeine,
   water,
+  polyunsaturatedFat,
+  calcium,
+  phosphorus,
+  magnesium,
+  potassium,
+  iron,
+  zinc,
+  copper,
+  vitaminA,
 }
 
 const defaultHomeMetricTypes = <NutritionMetricType>[
@@ -16,11 +25,12 @@ const defaultHomeMetricTypes = <NutritionMetricType>[
   NutritionMetricType.fats,
   NutritionMetricType.protein,
   NutritionMetricType.fiber,
+  NutritionMetricType.sodium,
   NutritionMetricType.caffeine,
   NutritionMetricType.water,
 ];
 
-const homeMetricSlotCount = 6;
+const homeMetricSlotCount = 7;
 
 List<NutritionMetricType> normalizeHomeMetricTypes(
   Iterable<NutritionMetricType> values, {
@@ -89,6 +99,24 @@ extension NutritionMetricTypeX on NutritionMetricType {
         return 'caffeine';
       case NutritionMetricType.water:
         return 'water';
+      case NutritionMetricType.polyunsaturatedFat:
+        return 'polyunsaturated_fat';
+      case NutritionMetricType.calcium:
+        return 'calcium';
+      case NutritionMetricType.phosphorus:
+        return 'phosphorus';
+      case NutritionMetricType.magnesium:
+        return 'magnesium';
+      case NutritionMetricType.potassium:
+        return 'potassium';
+      case NutritionMetricType.iron:
+        return 'iron';
+      case NutritionMetricType.zinc:
+        return 'zinc';
+      case NutritionMetricType.copper:
+        return 'copper';
+      case NutritionMetricType.vitaminA:
+        return 'vitamin_a';
     }
   }
 
@@ -114,6 +142,24 @@ extension NutritionMetricTypeX on NutritionMetricType {
         return 'Caffeine';
       case NutritionMetricType.water:
         return 'Water';
+      case NutritionMetricType.polyunsaturatedFat:
+        return 'PUFA';
+      case NutritionMetricType.calcium:
+        return 'Calcium';
+      case NutritionMetricType.phosphorus:
+        return 'Phosphorus';
+      case NutritionMetricType.magnesium:
+        return 'Magnesium';
+      case NutritionMetricType.potassium:
+        return 'Potassium';
+      case NutritionMetricType.iron:
+        return 'Iron';
+      case NutritionMetricType.zinc:
+        return 'Zinc';
+      case NutritionMetricType.copper:
+        return 'Copper';
+      case NutritionMetricType.vitaminA:
+        return 'Vitamin A';
     }
   }
 
@@ -123,11 +169,46 @@ extension NutritionMetricTypeX on NutritionMetricType {
         return 'kcal';
       case NutritionMetricType.sodium:
       case NutritionMetricType.caffeine:
+      case NutritionMetricType.calcium:
+      case NutritionMetricType.phosphorus:
+      case NutritionMetricType.magnesium:
+      case NutritionMetricType.potassium:
+      case NutritionMetricType.iron:
+      case NutritionMetricType.zinc:
+      case NutritionMetricType.copper:
         return 'mg';
       case NutritionMetricType.water:
         return 'ml';
+      case NutritionMetricType.vitaminA:
+        return 'mcg RAE';
       default:
         return 'g';
+    }
+  }
+
+  bool get blankWhenMissing {
+    switch (this) {
+      case NutritionMetricType.polyunsaturatedFat:
+      case NutritionMetricType.calcium:
+      case NutritionMetricType.phosphorus:
+      case NutritionMetricType.magnesium:
+      case NutritionMetricType.potassium:
+      case NutritionMetricType.iron:
+      case NutritionMetricType.zinc:
+      case NutritionMetricType.copper:
+      case NutritionMetricType.vitaminA:
+        return true;
+      case NutritionMetricType.calories:
+      case NutritionMetricType.carbs:
+      case NutritionMetricType.sugars:
+      case NutritionMetricType.fats:
+      case NutritionMetricType.saturatedFats:
+      case NutritionMetricType.protein:
+      case NutritionMetricType.fiber:
+      case NutritionMetricType.sodium:
+      case NutritionMetricType.caffeine:
+      case NutritionMetricType.water:
+        return false;
     }
   }
 
@@ -162,6 +243,38 @@ extension NutritionMetricTypeX on NutritionMetricType {
         return NutritionMetricType.caffeine;
       case 'water':
         return NutritionMetricType.water;
+      case 'polyunsaturated_fat':
+      case 'polyunsaturated_fat_g':
+      case 'pufa':
+      case 'pufa_g':
+        return NutritionMetricType.polyunsaturatedFat;
+      case 'calcium':
+      case 'calcium_mg':
+        return NutritionMetricType.calcium;
+      case 'phosphorus':
+      case 'phosphorous':
+      case 'phosphorus_mg':
+      case 'phosphorous_mg':
+        return NutritionMetricType.phosphorus;
+      case 'magnesium':
+      case 'magnesium_mg':
+        return NutritionMetricType.magnesium;
+      case 'potassium':
+      case 'potassium_mg':
+        return NutritionMetricType.potassium;
+      case 'iron':
+      case 'iron_mg':
+        return NutritionMetricType.iron;
+      case 'zinc':
+      case 'zinc_mg':
+        return NutritionMetricType.zinc;
+      case 'copper':
+      case 'copper_mg':
+        return NutritionMetricType.copper;
+      case 'vitamin_a':
+      case 'vitamina':
+      case 'vitamin_a_mcg_rae':
+        return NutritionMetricType.vitaminA;
       default:
         return null;
     }

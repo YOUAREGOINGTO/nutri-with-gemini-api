@@ -51,6 +51,11 @@ class DataPortabilityService {
     'Date',
     'Entries',
   ];
+  static const _dailyXlsxAnalyticsHeaders = [
+    'PUFA % Calories',
+    'Calcium:Phosphorus',
+    'Zinc:Copper',
+  ];
   static const _temperatureCsvHeaders = [
     'id',
     'timestamp',
@@ -927,13 +932,81 @@ class DataPortabilityService {
         _temperatureComment(row),
         row.icon ?? '',
         ...NutritionMetricType.values.map(
-          (metric) => _formatNumber(metrics[metric] ?? 0),
+          (metric) => _csvMetricCell(metrics, metric),
         ),
       ];
       buffer.writeln(cells.map(_csvCell).join(','));
     }
 
     return buffer.toString();
+  }
+
+  String _csvMetricCell(
+    Map<NutritionMetricType, double> metrics,
+    NutritionMetricType metric,
+  ) {
+    if (metric.blankWhenMissing && !metrics.containsKey(metric)) {
+      return '';
+    }
+    return _formatNumber(metrics[metric] ?? 0);
+  }
+
+  _XlsxCell _xlsxMetricCell(
+    Map<NutritionMetricType, double> totals,
+    Set<NutritionMetricType> presentMetrics,
+    NutritionMetricType metric,
+  ) {
+    if (metric.blankWhenMissing && !presentMetrics.contains(metric)) {
+      return _XlsxCell.text('');
+    }
+    return _XlsxCell.number(_roundMetric(totals[metric] ?? 0));
+  }
+
+  List<_XlsxCell> _dailyAnalyticsCells(
+    Map<NutritionMetricType, double> totals,
+    Set<NutritionMetricType> presentMetrics,
+  ) {
+    final calories = totals[NutritionMetricType.calories] ?? 0;
+    final pufa = totals[NutritionMetricType.polyunsaturatedFat] ?? 0;
+    final pufaPercent = calories > 0 &&
+            presentMetrics.contains(NutritionMetricType.polyunsaturatedFat)
+        ? _roundMetric((pufa * 9 / calories) * 100)
+        : null;
+
+    return [
+      _XlsxCell.number(pufaPercent),
+      _XlsxCell.number(
+        _dailyRatio(
+          totals,
+          presentMetrics,
+          NutritionMetricType.calcium,
+          NutritionMetricType.phosphorus,
+        ),
+      ),
+      _XlsxCell.number(
+        _dailyRatio(
+          totals,
+          presentMetrics,
+          NutritionMetricType.zinc,
+          NutritionMetricType.copper,
+        ),
+      ),
+    ];
+  }
+
+  double? _dailyRatio(
+    Map<NutritionMetricType, double> totals,
+    Set<NutritionMetricType> presentMetrics,
+    NutritionMetricType numerator,
+    NutritionMetricType denominator,
+  ) {
+    if (!presentMetrics.contains(numerator) ||
+        !presentMetrics.contains(denominator)) {
+      return null;
+    }
+    final denominatorValue = totals[denominator] ?? 0;
+    if (denominatorValue <= 0) return null;
+    return _roundMetric((totals[numerator] ?? 0) / denominatorValue);
   }
 
   String _buildTemperatureCsv(List<DiaryEntryRow> rows) {
@@ -972,6 +1045,7 @@ class DataPortabilityService {
         ...NutritionMetricType.values.map(
           (metric) => _XlsxCell.text('${metric.label} (${metric.unit})'),
         ),
+        ..._dailyXlsxAnalyticsHeaders.map(_XlsxCell.text),
       ],
     ];
 
@@ -981,12 +1055,16 @@ class DataPortabilityService {
       final totals = <NutritionMetricType, double>{
         for (final metric in NutritionMetricType.values) metric: 0,
       };
+      final presentMetrics = <NutritionMetricType>{};
 
       for (final row in rows) {
         final metrics =
             metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{};
         for (final metric in NutritionMetricType.values) {
-          totals[metric] = (totals[metric] ?? 0) + (metrics[metric] ?? 0);
+          final value = metrics[metric];
+          if (value == null) continue;
+          presentMetrics.add(metric);
+          totals[metric] = (totals[metric] ?? 0) + value;
         }
       }
 
@@ -994,8 +1072,9 @@ class DataPortabilityService {
         _XlsxCell.text(date),
         _XlsxCell.number(rows.length),
         ...NutritionMetricType.values.map(
-          (metric) => _XlsxCell.number(_roundMetric(totals[metric] ?? 0)),
+          (metric) => _xlsxMetricCell(totals, presentMetrics, metric),
         ),
+        ..._dailyAnalyticsCells(totals, presentMetrics),
       ]);
     }
 

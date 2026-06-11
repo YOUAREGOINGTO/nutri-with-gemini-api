@@ -165,56 +165,105 @@ class DailySummarySection extends ConsumerWidget {
               spacing: 16,
               runSpacing: 16,
               alignment: WrapAlignment.center,
-              children: [
-                MetricRing(
-                  label: NutritionMetricType.protein.label,
-                  value: summary[NutritionMetricType.protein.key] ?? 0,
-                  goal: profile.goalFor(NutritionMetricType.protein),
-                  unit: NutritionMetricType.protein.unit,
-                  color: _metricColor(NutritionMetricType.protein),
-                ),
-                MetricRing(
-                  label: NutritionMetricType.carbs.label,
-                  value: summary[NutritionMetricType.carbs.key] ?? 0,
-                  goal: profile.goalFor(NutritionMetricType.carbs),
-                  unit: NutritionMetricType.carbs.unit,
-                  color: _metricColor(NutritionMetricType.carbs),
-                  subLabel: NutritionMetricType.sugars.label,
-                  subValue: summary[NutritionMetricType.sugars.key] ?? 0,
-                  subGoal: profile.goalFor(NutritionMetricType.sugars),
-                  subColor: _metricColor(NutritionMetricType.sugars),
-                ),
-                MetricRing(
-                  label: NutritionMetricType.fats.label,
-                  value: summary[NutritionMetricType.fats.key] ?? 0,
-                  goal: profile.goalFor(NutritionMetricType.fats),
-                  unit: NutritionMetricType.fats.unit,
-                  color: _metricColor(NutritionMetricType.fats),
-                  subLabel: 'Sat. Fats',
-                  subValue: summary[NutritionMetricType.saturatedFats.key] ?? 0,
-                  subGoal: profile.goalFor(NutritionMetricType.saturatedFats),
-                  subColor: _metricColor(NutritionMetricType.saturatedFats),
-                ),
-                MetricRing(
-                  label: NutritionMetricType.fiber.label,
-                  value: summary[NutritionMetricType.fiber.key] ?? 0,
-                  goal: profile.goalFor(NutritionMetricType.fiber),
-                  unit: NutritionMetricType.fiber.unit,
-                  color: _metricColor(NutritionMetricType.fiber),
-                ),
-                MetricRing(
-                  label: NutritionMetricType.sodium.label,
-                  value: summary[NutritionMetricType.sodium.key] ?? 0,
-                  goal: profile.goalFor(NutritionMetricType.sodium),
-                  unit: NutritionMetricType.sodium.unit,
-                  color: _metricColor(NutritionMetricType.sodium),
-                ),
-              ],
+              children: _buildMacroRings(profile, summary),
             ),
+            ..._buildMicroRow(profile, summary),
           ],
         ),
       ),
     );
+  }
+
+  List<Widget> _buildMacroRings(
+    UserProfile profile,
+    Map<String, double> summary,
+  ) {
+    final metrics = profile.dashboardMetricTypes
+        .where(
+          (m) =>
+              m != NutritionMetricType.caffeine &&
+              m != NutritionMetricType.water,
+        )
+        .toList();
+
+    return metrics.map((metric) {
+      if (metric == NutritionMetricType.carbs) {
+        return MetricRing(
+          label: metric.label,
+          value: summary[metric.key] ?? 0,
+          goal: profile.goalFor(metric),
+          unit: metric.unit,
+          color: _metricColor(metric),
+          subLabel: NutritionMetricType.sugars.label,
+          subValue: summary[NutritionMetricType.sugars.key] ?? 0,
+          subGoal: profile.goalFor(NutritionMetricType.sugars),
+          subColor: _metricColor(NutritionMetricType.sugars),
+        );
+      }
+      if (metric == NutritionMetricType.fats) {
+        return MetricRing(
+          label: metric.label,
+          value: summary[metric.key] ?? 0,
+          goal: profile.goalFor(metric),
+          unit: metric.unit,
+          color: _metricColor(metric),
+          subLabel: 'Sat. Fats',
+          subValue: summary[NutritionMetricType.saturatedFats.key] ?? 0,
+          subGoal: profile.goalFor(NutritionMetricType.saturatedFats),
+          subColor: _metricColor(NutritionMetricType.saturatedFats),
+        );
+      }
+      return MetricRing(
+        label: metric.label,
+        value: summary[metric.key] ?? 0,
+        goal: profile.goalFor(metric),
+        unit: metric.unit,
+        color: _metricColor(metric),
+      );
+    }).toList();
+  }
+
+  List<Widget> _buildMicroRow(
+    UserProfile profile,
+    Map<String, double> summary,
+  ) {
+    const microMetrics = [
+      NutritionMetricType.polyunsaturatedFat,
+      NutritionMetricType.calcium,
+      NutritionMetricType.magnesium,
+      NutritionMetricType.potassium,
+      NutritionMetricType.iron,
+      NutritionMetricType.zinc,
+      NutritionMetricType.copper,
+      NutritionMetricType.vitaminA,
+      NutritionMetricType.phosphorus,
+    ];
+
+    final visible = microMetrics
+        .where((m) => (summary[m.key] ?? 0) > 0)
+        .toList();
+
+    if (visible.isEmpty) return [];
+
+    return [
+      const Gap(16),
+      Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        alignment: WrapAlignment.center,
+        children: visible
+            .map(
+              (metric) => MetricRing(
+                label: metric.label,
+                value: summary[metric.key] ?? 0,
+                goal: profile.goalFor(metric),
+                unit: metric.unit,
+                color: _metricColor(metric),
+              ),
+            )
+            .toList(),
+      ),
+    ];
   }
 
   Color _metricColor(NutritionMetricType metric) {
@@ -237,6 +286,19 @@ class DailySummarySection extends ConsumerWidget {
         return Colors.brown;
       case NutritionMetricType.water:
         return Colors.lightBlue;
+      case NutritionMetricType.polyunsaturatedFat:
+        return Colors.pinkAccent;
+      case NutritionMetricType.calcium:
+      case NutritionMetricType.phosphorus:
+      case NutritionMetricType.magnesium:
+      case NutritionMetricType.potassium:
+        return Colors.indigo;
+      case NutritionMetricType.iron:
+      case NutritionMetricType.zinc:
+      case NutritionMetricType.copper:
+        return Colors.deepPurple;
+      case NutritionMetricType.vitaminA:
+        return Colors.cyan;
       case NutritionMetricType.calories:
         return Colors.deepOrange;
     }

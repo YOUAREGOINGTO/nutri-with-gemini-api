@@ -52,6 +52,16 @@ class UserProfile {
         return 400;
       case NutritionMetricType.water:
         return 2000;
+      case NutritionMetricType.polyunsaturatedFat:
+      case NutritionMetricType.calcium:
+      case NutritionMetricType.phosphorus:
+      case NutritionMetricType.magnesium:
+      case NutritionMetricType.potassium:
+      case NutritionMetricType.iron:
+      case NutritionMetricType.zinc:
+      case NutritionMetricType.copper:
+      case NutritionMetricType.vitaminA:
+        return 0;
     }
   }
 

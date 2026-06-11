@@ -209,11 +209,20 @@ Return exactly one JSON object in this shape. Replace type names with actual JSO
     "sugars": number,
     "fats": number,
     "saturated_fats": number,
+    "polyunsaturated_fat": number,
     "protein": number,
     "fiber": number,
     "sodium": number,
     "caffeine": number,
-    "water": number
+    "water": number,
+    "calcium": number,
+    "phosphorus": number,
+    "magnesium": number,
+    "potassium": number,
+    "iron": number,
+    "zinc": number,
+    "copper": number,
+    "vitamin_a": number
   },
   "icon": string
 }
@@ -221,7 +230,7 @@ Return exactly one JSON object in this shape. Replace type names with actual JSO
 
 <output_contract>
 - Return exactly one JSON object with exactly the top-level keys shown in output_schema.
-- All metric values must be JSON numbers, never strings or null.
+- Metric values must be JSON numbers, never strings or null.
 - Always include every metrics key.
 - Do not include confidence, record_type, arrays, comments, XML, markdown, or extra keys.
 - Metrics must be the final total for what the user is logging.
@@ -289,6 +298,12 @@ Return exactly one JSON object in this shape. Replace type names with actual JSO
 - Do not treat curry, fried items, gravy, or restaurant/canteen-style plates as plain or low-oil unless the user says so.
 - If oil, ghee, sauces, or ingredients are uncertain, use a normal moderate assumption for that food and cuisine when the dish clearly implies them. Do not invent sides, toppings, or ingredients that are not visible, named, or typical for the identified item.
 </ingredients_and_preparation>
+
+<expanded_nutrients>
+- Estimate polyunsaturated_fat in grams of PUFA. Do not output MUFA.
+- Estimate calcium, phosphorus, magnesium, potassium, iron, zinc, and copper in milligrams.
+- Estimate vitamin_a in micrograms RAE.
+</expanded_nutrients>
 
 <water_rules>
 - water means plain water or beverage/liquid volume intentionally logged for hydration.

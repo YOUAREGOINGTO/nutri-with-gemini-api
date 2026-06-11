@@ -719,6 +719,28 @@ class DiaryController extends _$DiaryController {
       NutritionMetricType.sodium => source['sodium'],
       NutritionMetricType.caffeine => source['caffeine'],
       NutritionMetricType.water => source['water'],
+      NutritionMetricType.polyunsaturatedFat =>
+        source['polyunsaturated_fat'] ??
+            source['polyunsaturated_fat_g'] ??
+            source['pufa'] ??
+            source['pufa_g'],
+      NutritionMetricType.calcium => source['calcium'] ?? source['calcium_mg'],
+      NutritionMetricType.phosphorus =>
+        source['phosphorus'] ??
+            source['phosphorus_mg'] ??
+            source['phosphorous'] ??
+            source['phosphorous_mg'],
+      NutritionMetricType.magnesium =>
+        source['magnesium'] ?? source['magnesium_mg'],
+      NutritionMetricType.potassium =>
+        source['potassium'] ?? source['potassium_mg'],
+      NutritionMetricType.iron => source['iron'] ?? source['iron_mg'],
+      NutritionMetricType.zinc => source['zinc'] ?? source['zinc_mg'],
+      NutritionMetricType.copper => source['copper'] ?? source['copper_mg'],
+      NutritionMetricType.vitaminA =>
+        source['vitamin_a'] ??
+            source['vitamin_a_mcg_rae'] ??
+            source['vitaminA'],
     };
     return _toDouble(value);
   }
