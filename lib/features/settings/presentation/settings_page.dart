@@ -35,6 +35,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _isExportingDailyXlsx = false;
   bool _isExportingTemperatureCsv = false;
   bool _isClearingAiReviewQueue = false;
+  late Future<int> _aiReviewCountFuture;
 
   @override
   void initState() {
@@ -47,6 +48,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         }
       },
     );
+    _aiReviewCountFuture = _loadAiReviewCount();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadSettings();
@@ -61,6 +63,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _loadSettings() async {
     await _formManager.loadSettings();
+  }
+
+  Future<int> _loadAiReviewCount() {
+    return ref.read(diaryServiceProvider).aiReviewMarkCount();
+  }
+
+  void _refreshAiReviewCount() {
+    if (!mounted) return;
+    setState(() => _aiReviewCountFuture = _loadAiReviewCount());
   }
 
   Future<void> _save() async {
@@ -268,6 +279,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           .read(diaryControllerProvider.notifier)
           .clearAiReviewMarks();
       if (!mounted) return;
+      _refreshAiReviewCount();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Cleared $cleared review marks')),
       );
@@ -459,6 +471,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       currentUser: currentUser,
       controller: controller,
       formManager: _formManager,
+      aiReviewCountFuture: _aiReviewCountFuture,
       onProviderChanged: _onProviderChanged,
       onModelChanged: (value) => _onModelChanged(controller, value),
       onFallbackModelChanged: controller.updateFallbackModel,
@@ -572,6 +585,7 @@ class _SettingsSections extends StatelessWidget {
     required this.currentUser,
     required this.controller,
     required this.formManager,
+    required this.aiReviewCountFuture,
     required this.onProviderChanged,
     required this.onModelChanged,
     required this.onFallbackModelChanged,
@@ -600,6 +614,7 @@ class _SettingsSections extends StatelessWidget {
   final GoogleUserInfo? currentUser;
   final SettingsController controller;
   final SettingsFormManager formManager;
+  final Future<int> aiReviewCountFuture;
   final ValueChanged<AIProvider?> onProviderChanged;
   final ValueChanged<String?> onModelChanged;
   final ValueChanged<String?> onFallbackModelChanged;
@@ -673,6 +688,7 @@ class _SettingsSections extends StatelessWidget {
           isExportingDailyXlsx: isExportingDailyXlsx,
           isExportingTemperatureCsv: isExportingTemperatureCsv,
           isClearingAiReviewQueue: isClearingAiReviewQueue,
+          aiReviewCountFuture: aiReviewCountFuture,
           onExport: onExportData,
           onImport: onImportData,
           onExportBackup: onExportBackup,
@@ -706,6 +722,7 @@ class _DataSection extends StatelessWidget {
     required this.isExportingDailyXlsx,
     required this.isExportingTemperatureCsv,
     required this.isClearingAiReviewQueue,
+    required this.aiReviewCountFuture,
     required this.onExport,
     required this.onImport,
     required this.onExportBackup,
@@ -722,6 +739,7 @@ class _DataSection extends StatelessWidget {
   final bool isExportingDailyXlsx;
   final bool isExportingTemperatureCsv;
   final bool isClearingAiReviewQueue;
+  final Future<int> aiReviewCountFuture;
   final VoidCallback onExport;
   final VoidCallback onImport;
   final VoidCallback onExportBackup;
@@ -739,101 +757,136 @@ class _DataSection extends StatelessWidget {
       isExportingTemperatureCsv ||
       isClearingAiReviewQueue;
 
+  String _backupSubtitle(int? reviewCount) {
+    if (reviewCount == null) {
+      return 'Save entries, images, AI chat history, and review bundle';
+    }
+    if (reviewCount == 0) {
+      return 'Save entries, images, and AI chat history; no review entries marked';
+    }
+    final entryLabel = reviewCount == 1 ? 'entry' : 'entries';
+    return 'Save entries, images, AI chat history, and $reviewCount marked review $entryLabel';
+  }
+
+  String _clearReviewTitle(int? reviewCount) {
+    if (reviewCount == null) return 'Clear Review List';
+    return 'Clear Review List ($reviewCount)';
+  }
+
+  String _clearReviewSubtitle(int? reviewCount) {
+    if (reviewCount == null) return 'Remove all review marks at once';
+    final entryLabel = reviewCount == 1 ? 'entry' : 'entries';
+    return 'Remove review marks from $reviewCount $entryLabel';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text('Data', style: Theme.of(context).textTheme.titleMedium),
-        ),
-        const Gap(8),
-        ListTile(
-          title: const Text('Export ZIP Backup'),
-          subtitle: const Text('Save entries, images, and AI chat history'),
-          leading: const Icon(Icons.archive_outlined),
-          trailing: isExportingBackup
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: _isBusy ? null : onExportBackup,
-        ),
-        ListTile(
-          title: const Text('Import ZIP Backup'),
-          subtitle: const Text('Restore entries without removing existing data'),
-          leading: const Icon(Icons.unarchive_outlined),
-          trailing: isImportingBackup
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: _isBusy ? null : onImportBackup,
-        ),
-        ListTile(
-          title: const Text('Export CSV'),
-          subtitle: const Text('Save a portable backup of diary entries'),
-          leading: const Icon(Icons.download),
-          trailing: isExporting
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: _isBusy ? null : onExport,
-        ),
-        ListTile(
-          title: const Text('Export Daily XLSX'),
-          subtitle: const Text('Save daily nutrition totals as one spreadsheet'),
-          leading: const Icon(Icons.table_chart_outlined),
-          trailing: isExportingDailyXlsx
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: _isBusy ? null : onExportDailyXlsx,
-        ),
-        ListTile(
-          title: const Text('Export Temperature CSV'),
-          subtitle: const Text('Save readings with time and comments'),
-          leading: const Icon(Icons.device_thermostat),
-          trailing: isExportingTemperatureCsv
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: _isBusy ? null : onExportTemperatureCsv,
-        ),
-        ListTile(
-          title: const Text('Clear Review List'),
-          subtitle: const Text('Remove all review marks at once'),
-          leading: const Icon(Icons.fact_check_outlined),
-          trailing: isClearingAiReviewQueue
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: _isBusy ? null : onClearAiReviewQueue,
-        ),
-        ListTile(
-          title: const Text('Import CSV'),
-          subtitle: const Text('Add or update entries from a CSV backup'),
-          leading: const Icon(Icons.upload_file),
-          trailing: isImporting
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: _isBusy ? null : onImport,
-        ),
-      ],
+    return FutureBuilder<int>(
+      future: aiReviewCountFuture,
+      builder: (context, snapshot) {
+        final reviewCount = snapshot.data;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Data',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const Gap(8),
+            ListTile(
+              title: const Text('Export ZIP Backup'),
+              subtitle: Text(_backupSubtitle(reviewCount)),
+              leading: const Icon(Icons.archive_outlined),
+              trailing: isExportingBackup
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isBusy ? null : onExportBackup,
+            ),
+            ListTile(
+              title: const Text('Import ZIP Backup'),
+              subtitle: const Text(
+                'Restore entries without removing existing data',
+              ),
+              leading: const Icon(Icons.unarchive_outlined),
+              trailing: isImportingBackup
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isBusy ? null : onImportBackup,
+            ),
+            ListTile(
+              title: const Text('Export CSV'),
+              subtitle: const Text('Save a portable backup of diary entries'),
+              leading: const Icon(Icons.download),
+              trailing: isExporting
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isBusy ? null : onExport,
+            ),
+            ListTile(
+              title: const Text('Export Daily XLSX'),
+              subtitle: const Text(
+                'Save daily totals plus PUFA %, Calcium:Phosphorus, and Zinc:Copper',
+              ),
+              leading: const Icon(Icons.table_chart_outlined),
+              trailing: isExportingDailyXlsx
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isBusy ? null : onExportDailyXlsx,
+            ),
+            ListTile(
+              title: const Text('Export Temperature CSV'),
+              subtitle: const Text('Save readings with time and comments'),
+              leading: const Icon(Icons.device_thermostat),
+              trailing: isExportingTemperatureCsv
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isBusy ? null : onExportTemperatureCsv,
+            ),
+            ListTile(
+              title: Text(_clearReviewTitle(reviewCount)),
+              subtitle: Text(_clearReviewSubtitle(reviewCount)),
+              leading: const Icon(Icons.fact_check_outlined),
+              trailing: isClearingAiReviewQueue
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isBusy ? null : onClearAiReviewQueue,
+            ),
+            ListTile(
+              title: const Text('Import CSV'),
+              subtitle: const Text('Add or update entries from a CSV backup'),
+              leading: const Icon(Icons.upload_file),
+              trailing: isImporting
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isBusy ? null : onImport,
+            ),
+          ],
+        );
+      },
     );
   }
 }

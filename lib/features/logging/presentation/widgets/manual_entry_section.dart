@@ -16,6 +16,8 @@ class ManualEntrySection extends StatelessWidget {
     this.durationController,
     this.reasoning,
     this.aiRequestLabel,
+    this.aiPrompt,
+    this.aiResult,
     this.isApplyingAiCorrection = false,
     this.isRerunningAi = false,
     this.markedForAiReview = false,
@@ -42,6 +44,8 @@ class ManualEntrySection extends StatelessWidget {
   final TextEditingController? durationController;
   final String? reasoning;
   final String? aiRequestLabel;
+  final String? aiPrompt;
+  final String? aiResult;
   final bool isApplyingAiCorrection;
   final bool isRerunningAi;
   final bool markedForAiReview;
@@ -58,6 +62,11 @@ class ManualEntrySection extends StatelessWidget {
   final Future<void> Function()? onRerunAi;
   final ValueChanged<bool>? onAiReviewMarkChanged;
   final Future<void> Function() onDeleteConfirmed;
+
+  bool get _hasAiDebugDetails =>
+      aiRequestLabel?.trim().isNotEmpty == true ||
+      aiPrompt?.trim().isNotEmpty == true ||
+      aiResult?.trim().isNotEmpty == true;
 
   @override
   Widget build(BuildContext context) {
@@ -92,21 +101,14 @@ class ManualEntrySection extends StatelessWidget {
           ),
           const Gap(8),
           Text(reasoning!.trim()),
-          if (aiRequestLabel?.trim().isNotEmpty == true) ...[
-            const Gap(8),
-            Row(
-              children: [
-                const Icon(Icons.info_outline, size: 16),
-                const Gap(6),
-                Expanded(
-                  child: Text(
-                    aiRequestLabel!.trim(),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            ),
-          ],
+        ],
+        if (!isExercise && isEditing && _hasAiDebugDetails) ...[
+          const Gap(16),
+          _AiDebugDetailsTile(
+            requestLabel: aiRequestLabel,
+            prompt: aiPrompt,
+            result: aiResult,
+          ),
         ],
         if (!isExercise && isEditing && onAiReviewMarkChanged != null) ...[
           const Gap(16),
@@ -198,6 +200,87 @@ class ManualEntrySection extends StatelessWidget {
           onDeleteConfirmed: onDeleteConfirmed,
         ),
         const Gap(32),
+      ],
+    );
+  }
+}
+
+class _AiDebugDetailsTile extends StatelessWidget {
+  const _AiDebugDetailsTile({
+    required this.requestLabel,
+    required this.prompt,
+    required this.result,
+  });
+
+  final String? requestLabel;
+  final String? prompt;
+  final String? result;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedLabel = requestLabel?.trim();
+    final normalizedPrompt = prompt?.trim();
+    final normalizedResult = result?.trim();
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ExpansionTile(
+        leading: const Icon(Icons.manage_search_outlined),
+        title: const Text('AI prompt/result used'),
+        subtitle: normalizedLabel?.isNotEmpty == true
+            ? Text(normalizedLabel!)
+            : null,
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          if (normalizedPrompt?.isNotEmpty == true)
+            _AiDebugTextBlock(title: 'Prompt', text: normalizedPrompt!),
+          if (normalizedPrompt?.isNotEmpty == true &&
+              normalizedResult?.isNotEmpty == true)
+            const Gap(12),
+          if (normalizedResult?.isNotEmpty == true)
+            _AiDebugTextBlock(title: 'Result', text: normalizedResult!),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiDebugTextBlock extends StatelessWidget {
+  const _AiDebugTextBlock({required this.title, required this.text});
+
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(title, style: theme.textTheme.titleSmall),
+        ),
+        const Gap(6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.45,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SelectableText(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
       ],
     );
   }

@@ -36,6 +36,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   bool _isUpdatingAiReviewMark = false;
   bool _markedForAiReview = false;
   String? _aiRequestLabel;
+  String? _aiPrompt;
+  String? _aiResult;
 
   @override
   void initState() {
@@ -51,7 +53,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
       _markedForAiReview = widget.existingEntry!.markedForAiReview;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _formManager.initializeWithEntry(widget.existingEntry!);
-        unawaited(_loadAiRequestLabel(widget.existingEntry!.id));
+        unawaited(_loadAiDebugDetails(widget.existingEntry!.id));
       });
     } else {
       // Initialize with type
@@ -122,52 +124,93 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     }
   }
 
-  Future<void> _loadAiRequestLabel(String entryId) async {
+  Future<void> _loadAiDebugDetails(String entryId) async {
     final chats = await ref.read(diaryServiceProvider).getChatMessages(entryId);
     String? label;
+    String? analysisPrompt;
+    String? fallbackPrompt;
+    String? result;
+    var requestMetadataSeen = false;
+
     for (final chat in chats.reversed) {
-      final rawMetadata = chat.metadataJson;
-      if (chat.role != 'assistant' || rawMetadata == null) continue;
+      final content = chat.content.trim();
+      final metadata = _decodeChatMetadata(chat.metadataJson);
 
-      try {
-        final metadata = jsonDecode(rawMetadata);
-        if (metadata is! Map) continue;
-        if (!metadata.containsKey('ai_result') &&
-            !metadata.containsKey('ai_request')) {
-          continue;
+      if (chat.role == 'user' && content.isNotEmpty) {
+        final kind = metadata?['kind']?.toString();
+        if (analysisPrompt == null &&
+            (kind == 'initial_food_request' ||
+                kind == 'rerun_food_request')) {
+          analysisPrompt = content;
+        }
+        fallbackPrompt ??= content;
+      }
+
+      if (chat.role == 'assistant') {
+        final request = metadata?['ai_request'];
+        if (!requestMetadataSeen && request is Map) {
+          requestMetadataSeen = true;
+          label = _aiRequestLabelFromRequest(request);
         }
 
-        final request = metadata['ai_request'];
-        if (request is! Map) break;
-        final provider = request['provider']?.toString();
-        final keySource = request['key_source']?.toString();
-        final keyRelation = request['key_relation']?.toString();
-        final modelSource = request['model_source']?.toString();
-        if (provider != 'gemini' ||
-            (keySource != 'backup' && modelSource != 'backup')) {
-          break;
+        if (result == null) {
+          final aiResult = metadata?['ai_result'];
+          if (aiResult != null) {
+            result = const JsonEncoder.withIndent('  ').convert(aiResult);
+          } else if (content.isNotEmpty) {
+            result = content;
+          }
         }
-
-        final model = request['model']?.toString();
-        final modelSuffix = model == null ? '' : ': $model';
-        if (keyRelation == 'same_as_primary' && modelSource == 'backup') {
-          label = 'Gemini backup model used with primary key$modelSuffix';
-        } else if (keySource == 'backup' && modelSource == 'backup') {
-          label = 'Gemini backup key and backup model used$modelSuffix';
-        } else if (keySource == 'backup') {
-          label = 'Gemini backup key used$modelSuffix';
-        } else {
-          label = 'Gemini backup model used$modelSuffix';
-        }
-        break;
-      } catch (_) {
-        continue;
       }
     }
 
+    final description = widget.existingEntry?.description?.trim();
+    final prompt = analysisPrompt ??
+        fallbackPrompt ??
+        (description?.isNotEmpty == true ? description : null);
+
     if (mounted) {
-      setState(() => _aiRequestLabel = label);
+      setState(() {
+        _aiRequestLabel = label;
+        _aiPrompt = prompt;
+        _aiResult = result;
+      });
     }
+  }
+
+  Map<String, dynamic>? _decodeChatMetadata(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  String? _aiRequestLabelFromRequest(Map<dynamic, dynamic> request) {
+    final provider = request['provider']?.toString();
+    final keySource = request['key_source']?.toString();
+    final keyRelation = request['key_relation']?.toString();
+    final modelSource = request['model_source']?.toString();
+    if (provider != 'gemini' ||
+        (keySource != 'backup' && modelSource != 'backup')) {
+      return null;
+    }
+
+    final model = request['model']?.toString();
+    final modelSuffix = model == null ? '' : ': $model';
+    if (keyRelation == 'same_as_primary' && modelSource == 'backup') {
+      return 'Gemini backup model used with primary key$modelSuffix';
+    }
+    if (keySource == 'backup' && modelSource == 'backup') {
+      return 'Gemini backup key and backup model used$modelSuffix';
+    }
+    if (keySource == 'backup') {
+      return 'Gemini backup key used$modelSuffix';
+    }
+    return 'Gemini backup model used$modelSuffix';
   }
 
   Future<void> _applyAiCorrection() async {
@@ -383,6 +426,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   durationController: _formManager.durationController,
                   reasoning: widget.existingEntry?.reasoning,
                   aiRequestLabel: _aiRequestLabel,
+                  aiPrompt: _aiPrompt,
+                  aiResult: _aiResult,
                   isApplyingAiCorrection: _isApplyingAiCorrection,
                   isRerunningAi: _isRerunningAi,
                   markedForAiReview: _markedForAiReview,

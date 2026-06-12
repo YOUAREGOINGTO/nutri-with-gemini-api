@@ -168,6 +168,7 @@ class DailySummarySection extends ConsumerWidget {
               children: _buildMacroRings(profile, summary),
             ),
             ..._buildMicroRow(profile, summary),
+            ..._buildAnalyticsSection(summary),
           ],
         ),
       ),
@@ -227,19 +228,7 @@ class DailySummarySection extends ConsumerWidget {
     UserProfile profile,
     Map<String, double> summary,
   ) {
-    const microMetrics = [
-      NutritionMetricType.polyunsaturatedFat,
-      NutritionMetricType.calcium,
-      NutritionMetricType.magnesium,
-      NutritionMetricType.potassium,
-      NutritionMetricType.iron,
-      NutritionMetricType.zinc,
-      NutritionMetricType.copper,
-      NutritionMetricType.vitaminA,
-      NutritionMetricType.phosphorus,
-    ];
-
-    final visible = microMetrics
+    final visible = micronutrientMetricTypes
         .where((m) => (summary[m.key] ?? 0) > 0)
         .toList();
 
@@ -264,6 +253,94 @@ class DailySummarySection extends ConsumerWidget {
             .toList(),
       ),
     ];
+  }
+
+  List<Widget> _buildAnalyticsSection(Map<String, double> summary) {
+    final items = _analyticsItems(summary);
+    if (items.isEmpty) return [];
+
+    return [
+      const Gap(8),
+      SizedBox(
+        width: double.infinity,
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.insights_outlined),
+          title: const Text('Analytics'),
+          children: items
+              .map(
+                (item) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(item.icon),
+                  title: Text(item.label),
+                  trailing: Text(
+                    item.value,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              )
+              .toList(growable: false),
+        ),
+      ),
+    ];
+  }
+
+  List<_AnalyticsItem> _analyticsItems(Map<String, double> summary) {
+    final calories = summary[NutritionMetricType.calories.key] ?? 0;
+    final pufa = summary[NutritionMetricType.polyunsaturatedFat.key] ?? 0;
+    final pufaPercent = calories > 0 && pufa > 0
+        ? (pufa * 9 / calories) * 100
+        : null;
+    final calciumPhosphorus = _metricRatio(
+      summary,
+      NutritionMetricType.calcium,
+      NutritionMetricType.phosphorus,
+    );
+    final zincCopper = _metricRatio(
+      summary,
+      NutritionMetricType.zinc,
+      NutritionMetricType.copper,
+    );
+
+    return [
+      if (pufaPercent != null)
+        _AnalyticsItem(
+          label: 'PUFA % of calories',
+          value: '${_formatCompactNumber(pufaPercent, maxDecimals: 1)}%',
+          icon: Icons.percent,
+        ),
+      if (calciumPhosphorus != null)
+        _AnalyticsItem(
+          label: 'Calcium:Phosphorus',
+          value: '${_formatCompactNumber(calciumPhosphorus)}:1',
+          icon: Icons.balance_outlined,
+        ),
+      if (zincCopper != null)
+        _AnalyticsItem(
+          label: 'Zinc:Copper',
+          value: '${_formatCompactNumber(zincCopper)}:1',
+          icon: Icons.balance_outlined,
+        ),
+    ];
+  }
+
+  double? _metricRatio(
+    Map<String, double> summary,
+    NutritionMetricType numerator,
+    NutritionMetricType denominator,
+  ) {
+    final numeratorValue = summary[numerator.key] ?? 0;
+    final denominatorValue = summary[denominator.key] ?? 0;
+    if (numeratorValue <= 0 || denominatorValue <= 0) return null;
+    return numeratorValue / denominatorValue;
+  }
+
+  String _formatCompactNumber(double value, {int maxDecimals = 2}) {
+    var text = value.toStringAsFixed(maxDecimals);
+    text = text.replaceFirst(RegExp(r'\.?0+$'), '');
+    return text;
   }
 
   Color _metricColor(NutritionMetricType metric) {
@@ -303,4 +380,16 @@ class DailySummarySection extends ConsumerWidget {
         return Colors.deepOrange;
     }
   }
+}
+
+class _AnalyticsItem {
+  const _AnalyticsItem({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
 }

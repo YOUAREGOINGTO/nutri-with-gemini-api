@@ -42,12 +42,31 @@ class ProfileSection extends StatelessWidget {
     );
   }
 
+  Widget _buildMetricGoalWrap(Iterable<NutritionMetricType> metrics) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: metrics.map(_buildMetricGoalField).toList(growable: false),
+    );
+  }
+
+  Widget _buildMetricGoalGroup(
+    BuildContext context, {
+    required String title,
+    required Iterable<NutritionMetricType> metrics,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const Gap(8),
+        _buildMetricGoalWrap(metrics),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final nonCalorieMetrics = NutritionMetricType.values
-        .where((metric) => metric != NutritionMetricType.calories)
-        .toList(growable: false);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -136,12 +155,34 @@ class ProfileSection extends StatelessWidget {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const Gap(8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: nonCalorieMetrics
-              .map(_buildMetricGoalField)
-              .toList(growable: false),
+        _buildMetricGoalGroup(
+          context,
+          title: 'Macros',
+          metrics: macroMetricTypes,
+        ),
+        const Gap(16),
+        _buildMetricGoalGroup(
+          context,
+          title: 'Fluids / stimulants',
+          metrics: fluidAndStimulantMetricTypes,
+        ),
+        const Gap(8),
+        SizedBox(
+          width: double.infinity,
+          child: ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(top: 8),
+            title: Text(
+              'Micronutrients',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _buildMetricGoalWrap(micronutrientMetricTypes),
+              ),
+            ],
+          ),
         ),
       ],
     );

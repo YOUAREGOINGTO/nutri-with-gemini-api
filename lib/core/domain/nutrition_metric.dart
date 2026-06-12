@@ -32,6 +32,33 @@ const defaultHomeMetricTypes = <NutritionMetricType>[
 
 const homeMetricSlotCount = 7;
 
+const macroMetricTypes = <NutritionMetricType>[
+  NutritionMetricType.carbs,
+  NutritionMetricType.fats,
+  NutritionMetricType.protein,
+  NutritionMetricType.sugars,
+  NutritionMetricType.saturatedFats,
+  NutritionMetricType.fiber,
+];
+
+const fluidAndStimulantMetricTypes = <NutritionMetricType>[
+  NutritionMetricType.water,
+  NutritionMetricType.caffeine,
+  NutritionMetricType.sodium,
+];
+
+const micronutrientMetricTypes = <NutritionMetricType>[
+  NutritionMetricType.polyunsaturatedFat,
+  NutritionMetricType.calcium,
+  NutritionMetricType.phosphorus,
+  NutritionMetricType.magnesium,
+  NutritionMetricType.potassium,
+  NutritionMetricType.iron,
+  NutritionMetricType.zinc,
+  NutritionMetricType.copper,
+  NutritionMetricType.vitaminA,
+];
+
 List<NutritionMetricType> normalizeHomeMetricTypes(
   Iterable<NutritionMetricType> values, {
   int slotCount = homeMetricSlotCount,

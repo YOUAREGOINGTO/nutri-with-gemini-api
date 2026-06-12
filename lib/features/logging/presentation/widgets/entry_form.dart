@@ -76,12 +76,31 @@ class EntryForm extends StatelessWidget {
     );
   }
 
+  Widget _buildMetricWrap(Iterable<NutritionMetricType> metrics) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: metrics.map(_buildMetricField).toList(growable: false),
+    );
+  }
+
+  Widget _buildMetricGroup(
+    BuildContext context, {
+    required String title,
+    required Iterable<NutritionMetricType> metrics,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const Gap(8),
+        _buildMetricWrap(metrics),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final nonCalorieMetrics = NutritionMetricType.values
-        .where((metric) => metric != NutritionMetricType.calories)
-        .toList(growable: false);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -170,12 +189,31 @@ class EntryForm extends StatelessWidget {
         ),
         if (!isExercise) ...[
           const Gap(16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: nonCalorieMetrics
-                .map(_buildMetricField)
-                .toList(growable: false),
+          _buildMetricGroup(
+            context,
+            title: 'Macros',
+            metrics: macroMetricTypes,
+          ),
+          const Gap(16),
+          _buildMetricGroup(
+            context,
+            title: 'Fluids / stimulants',
+            metrics: fluidAndStimulantMetricTypes,
+          ),
+          const Gap(8),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(top: 8),
+            title: Text(
+              'Micronutrients',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _buildMetricWrap(micronutrientMetricTypes),
+              ),
+            ],
           ),
         ],
       ],

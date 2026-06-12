@@ -80,6 +80,6 @@ class UserProfile {
       }
     }
 
-    return result.take(6).toList(growable: false);
+    return result.take(homeMetricSlotCount).toList(growable: false);
   }
 }
