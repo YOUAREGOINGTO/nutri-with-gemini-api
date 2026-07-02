@@ -168,6 +168,7 @@ class DailySummarySection extends ConsumerWidget {
               children: _buildMacroRings(profile, summary),
             ),
             ..._buildMicroRow(profile, summary),
+            ..._buildRatioRow(summary),
             ..._buildAnalyticsSection(summary),
           ],
         ),
@@ -255,6 +256,46 @@ class DailySummarySection extends ConsumerWidget {
     ];
   }
 
+  List<Widget> _buildRatioRow(Map<String, double> summary) {
+    final calciumPhosphorus = _metricRatio(
+      summary,
+      NutritionMetricType.calcium,
+      NutritionMetricType.phosphorus,
+    );
+    final zincCopper = _metricRatio(
+      summary,
+      NutritionMetricType.zinc,
+      NutritionMetricType.copper,
+    );
+
+    final items = [
+      if (calciumPhosphorus != null)
+        _RatioItem(
+          label: 'Ca:P',
+          value: '${_formatCompactNumber(calciumPhosphorus)}:1',
+        ),
+      if (zincCopper != null)
+        _RatioItem(
+          label: 'Zn:Cu',
+          value: '${_formatCompactNumber(zincCopper)}:1',
+        ),
+    ];
+
+    if (items.isEmpty) return [];
+
+    return [
+      const Gap(16),
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        alignment: WrapAlignment.center,
+        children: items
+            .map((item) => _RatioStat(label: item.label, value: item.value))
+            .toList(growable: false),
+      ),
+    ];
+  }
+
   List<Widget> _buildAnalyticsSection(Map<String, double> summary) {
     final items = _analyticsItems(summary);
     if (items.isEmpty) return [];
@@ -293,16 +334,6 @@ class DailySummarySection extends ConsumerWidget {
     final pufaPercent = calories > 0 && pufa > 0
         ? (pufa * 9 / calories) * 100
         : null;
-    final calciumPhosphorus = _metricRatio(
-      summary,
-      NutritionMetricType.calcium,
-      NutritionMetricType.phosphorus,
-    );
-    final zincCopper = _metricRatio(
-      summary,
-      NutritionMetricType.zinc,
-      NutritionMetricType.copper,
-    );
 
     return [
       if (pufaPercent != null)
@@ -310,18 +341,6 @@ class DailySummarySection extends ConsumerWidget {
           label: 'PUFA % of calories',
           value: '${_formatCompactNumber(pufaPercent, maxDecimals: 1)}%',
           icon: Icons.percent,
-        ),
-      if (calciumPhosphorus != null)
-        _AnalyticsItem(
-          label: 'Calcium:Phosphorus',
-          value: '${_formatCompactNumber(calciumPhosphorus)}:1',
-          icon: Icons.balance_outlined,
-        ),
-      if (zincCopper != null)
-        _AnalyticsItem(
-          label: 'Zinc:Copper',
-          value: '${_formatCompactNumber(zincCopper)}:1',
-          icon: Icons.balance_outlined,
         ),
     ];
   }
@@ -380,6 +399,63 @@ class DailySummarySection extends ConsumerWidget {
         return Colors.deepOrange;
     }
   }
+}
+
+class _RatioStat extends StatelessWidget {
+  const _RatioStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 112,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.balance_outlined, size: 16, color: colorScheme.primary),
+              const Gap(4),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const Gap(4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RatioItem {
+  const _RatioItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
 }
 
 class _AnalyticsItem {
