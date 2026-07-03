@@ -11,6 +11,7 @@ import 'package:mime/mime.dart';
 import 'package:nutrinutri/core/db/app_database.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/services/device_id_service.dart';
+import 'package:nutrinutri/core/services/settings_service.dart';
 import 'package:nutrinutri/core/services/sync_service.dart';
 import 'package:nutrinutri/features/diary/domain/diary_entry.dart';
 import 'package:path/path.dart' as p;
@@ -31,6 +32,7 @@ class DataPortabilityService {
   static const _backupVersion = 1;
   static const _appVersion = '0.1.3+4';
   static const _notConfiguredLabel = 'Not configured';
+  static const _notEligibleLabel = 'Not eligible';
   static const _baseHeaders = [
     'id',
     'timestamp',
@@ -153,6 +155,8 @@ class DataPortabilityService {
 
     final entryIds = rows.map((row) => row.id).toList(growable: false);
     final metricsByEntryId = await _loadMetricsByEntryId(entryIds);
+    final calculationExportIneligibleDateKeys =
+        await _loadDailyCalculationExportIneligibleDateKeys();
     final rowsByDate = <String, List<DiaryEntryRow>>{};
     for (final row in rows) {
       final timestamp = DateTime.fromMillisecondsSinceEpoch(row.timestamp);
@@ -163,6 +167,8 @@ class DataPortabilityService {
     final xlsxBytes = _buildDailySummaryXlsx(
       rowsByDate: rowsByDate,
       metricsByEntryId: metricsByEntryId,
+      calculationExportIneligibleDateKeys:
+          calculationExportIneligibleDateKeys,
       createdAt: now,
     );
     final fileName =
@@ -687,6 +693,20 @@ class DataPortabilityService {
     return chatsByEntryId;
   }
 
+  Future<Set<String>> _loadDailyCalculationExportIneligibleDateKeys() async {
+    final row =
+        await (_db.select(_db.localPrefs)
+              ..where(
+                (t) => t.key.equals(
+                  SettingsService.dailyCalculationExportIneligibleDatesPrefKey,
+                ),
+              ))
+            .getSingleOrNull();
+    return SettingsService.parseDailyCalculationExportIneligibleDateKeys(
+      row?.value,
+    );
+  }
+
   Map<String, Object?> _buildReviewEntry({
     required DiaryEntryRow row,
     required String prompt,
@@ -1064,6 +1084,7 @@ class DataPortabilityService {
   Uint8List _buildDailySummaryXlsx({
     required Map<String, List<DiaryEntryRow>> rowsByDate,
     required Map<String, Map<NutritionMetricType, double>> metricsByEntryId,
+    required Set<String> calculationExportIneligibleDateKeys,
     required DateTime createdAt,
   }) {
     final workbook = Archive();
@@ -1080,6 +1101,20 @@ class DataPortabilityService {
     final dates = rowsByDate.keys.toList()..sort();
     for (final date in dates) {
       final rows = rowsByDate[date] ?? const <DiaryEntryRow>[];
+      final isCalculationExportIneligible =
+          calculationExportIneligibleDateKeys.contains(date);
+      if (isCalculationExportIneligible) {
+        sheetRows.add([
+          _XlsxCell.text(date),
+          _XlsxCell.number(rows.length),
+          for (final _ in NutritionMetricType.values)
+            _XlsxCell.text(_notEligibleLabel),
+          for (final _ in _dailyXlsxAnalyticsHeaders)
+            _XlsxCell.text(_notEligibleLabel),
+        ]);
+        continue;
+      }
+
       final totals = <NutritionMetricType, double>{
         for (final metric in NutritionMetricType.values) metric: 0,
       };

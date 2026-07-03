@@ -18,6 +18,8 @@ class SettingsService {
   static const _prefGeminiApiKey = 'gemini_api_key';
   static const _geminiBackupApiKeyId = 'gemini_backup';
   static const _providerModelSeparator = ':';
+  static const dailyCalculationExportIneligibleDatesPrefKey =
+      'daily_calculation_export_ineligible_dates';
 
   Future<({String deviceId, int now})> _audit() async {
     final deviceId = await _deviceId.getOrCreate();
@@ -260,6 +262,94 @@ class SettingsService {
   Future<bool> isOnboarded() async {
     final profile = await getUserProfile();
     return profile != null && profile.isConfigured;
+  }
+
+  Future<Set<String>> getDailyCalculationExportIneligibleDateKeys() async {
+    return parseDailyCalculationExportIneligibleDateKeys(
+      await _localPref(dailyCalculationExportIneligibleDatesPrefKey),
+    );
+  }
+
+  Future<bool> isDailyCalculationExportIneligible(DateTime date) async {
+    final dateKeys = await getDailyCalculationExportIneligibleDateKeys();
+    return dateKeys.contains(calculationExportDateKey(date));
+  }
+
+  Future<void> setDailyCalculationExportIneligible(
+    DateTime date, {
+    required bool ineligible,
+  }) async {
+    final dateKeys = await getDailyCalculationExportIneligibleDateKeys();
+    final dateKey = calculationExportDateKey(date);
+    if (ineligible) {
+      dateKeys.add(dateKey);
+    } else {
+      dateKeys.remove(dateKey);
+    }
+
+    await _saveLocalPref(
+      dailyCalculationExportIneligibleDatesPrefKey,
+      dateKeys.isEmpty
+          ? null
+          : encodeDailyCalculationExportIneligibleDateKeys(dateKeys),
+    );
+  }
+
+  static String calculationExportDateKey(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
+  }
+
+  static Set<String> parseDailyCalculationExportIneligibleDateKeys(String? raw) {
+    final trimmed = raw?.trim();
+    if (trimmed == null || trimmed.isEmpty) return <String>{};
+
+    Iterable<Object?> values;
+    try {
+      final decoded = jsonDecode(trimmed);
+      values = decoded is List ? decoded : const <Object?>[];
+    } catch (_) {
+      values = trimmed.split(RegExp(r'[\s,]+'));
+    }
+
+    return values
+        .map(
+          (value) => _normalizeCalculationExportDateKey(
+            value?.toString() ?? '',
+          ),
+        )
+        .whereType<String>()
+        .toSet();
+  }
+
+  static String encodeDailyCalculationExportIneligibleDateKeys(
+    Set<String> dateKeys,
+  ) {
+    final normalized = dateKeys
+        .map(_normalizeCalculationExportDateKey)
+        .whereType<String>()
+        .toList()
+      ..sort();
+    return jsonEncode(normalized);
+  }
+
+  static String? _normalizeCalculationExportDateKey(String value) {
+    final match = RegExp(
+      r'^(\d{4})-(\d{1,2})-(\d{1,2})$',
+    ).firstMatch(value.trim());
+    if (match == null) return null;
+
+    final year = int.tryParse(match.group(1)!);
+    final month = int.tryParse(match.group(2)!);
+    final day = int.tryParse(match.group(3)!);
+    if (year == null || month == null || day == null) return null;
+
+    final parsed = DateTime(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return null;
+    }
+    return calculationExportDateKey(parsed);
   }
 
   Future<AppSettingsRow?> _settings() async {

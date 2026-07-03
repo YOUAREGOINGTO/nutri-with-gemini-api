@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:nutrinutri/core/domain/nutrition_metric.dart';
 import 'package:nutrinutri/core/domain/user_profile.dart';
+import 'package:nutrinutri/core/providers.dart';
 import 'package:nutrinutri/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:nutrinutri/features/dashboard/presentation/widgets/metric_ring.dart';
 
@@ -18,7 +21,14 @@ class DailySummarySection extends ConsumerWidget {
     return summaryDataAsync.when(
       data: (summaryData) {
         if (summaryData == null) return const Text('Profile not found');
-        return _buildContent(context, summaryData.profile, summaryData.summary);
+        return _buildContent(
+          context,
+          ref,
+          summaryData.profile,
+          summaryData.summary,
+          summaryData.configuredMetrics,
+          summaryData.isDailyCalculationExportIneligible,
+        );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, stack) => Text('Error: $err'),
@@ -27,8 +37,11 @@ class DailySummarySection extends ConsumerWidget {
 
   Widget _buildContent(
     BuildContext context,
+    WidgetRef ref,
     UserProfile profile,
     Map<String, double> summary,
+    Set<NutritionMetricType> configuredMetrics,
+    bool isDailyCalculationExportIneligible,
   ) {
     final consumed = summary[NutritionMetricType.calories.key] ?? 0;
     final burned = summary['caloriesBurned'] ?? 0.0;
@@ -79,6 +92,10 @@ class DailySummarySection extends ConsumerWidget {
                   ],
                 ),
               ],
+            ),
+            _buildDailyExportEligibilitySwitch(
+              ref,
+              isDailyCalculationExportIneligible,
             ),
             const Gap(16),
             FittedBox(
@@ -168,11 +185,27 @@ class DailySummarySection extends ConsumerWidget {
               children: _buildMacroRings(profile, summary),
             ),
             ..._buildMicroRow(profile, summary),
-            ..._buildRatioRow(summary),
-            ..._buildAnalyticsSection(summary),
+            ..._buildRatioRow(summary, configuredMetrics),
+            ..._buildAnalyticsSection(summary, configuredMetrics),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDailyExportEligibilitySwitch(
+    WidgetRef ref,
+    bool isDailyCalculationExportIneligible,
+  ) {
+    return SwitchListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      secondary: const Icon(Icons.table_chart_outlined),
+      title: const Text('Calculation export: Not eligible'),
+      value: isDailyCalculationExportIneligible,
+      onChanged: (value) {
+        unawaited(_setDailyCalculationExportIneligible(ref, value));
+      },
     );
   }
 
@@ -256,19 +289,25 @@ class DailySummarySection extends ConsumerWidget {
     ];
   }
 
-  List<Widget> _buildRatioRow(Map<String, double> summary) {
+  List<Widget> _buildRatioRow(
+    Map<String, double> summary,
+    Set<NutritionMetricType> configuredMetrics,
+  ) {
     final calciumPhosphorus = _metricRatio(
       summary,
+      configuredMetrics,
       NutritionMetricType.calcium,
       NutritionMetricType.phosphorus,
     );
     final zincCopper = _metricRatio(
       summary,
+      configuredMetrics,
       NutritionMetricType.zinc,
       NutritionMetricType.copper,
     );
     final potassiumSodium = _metricRatio(
       summary,
+      configuredMetrics,
       NutritionMetricType.potassium,
       NutritionMetricType.sodium,
     );
@@ -306,9 +345,12 @@ class DailySummarySection extends ConsumerWidget {
     ];
   }
 
-  List<Widget> _buildAnalyticsSection(Map<String, double> summary) {
-    final items = _analyticsItems(summary);
-    if (items.isEmpty) return [];
+  List<Widget> _buildAnalyticsSection(
+    Map<String, double> summary,
+    Set<NutritionMetricType> configuredMetrics,
+  ) {
+    final items = _analyticsItems(summary, configuredMetrics);
+    final statusText = items.isEmpty ? 'Not configured' : null;
 
     return [
       const Gap(8),
@@ -319,8 +361,17 @@ class DailySummarySection extends ConsumerWidget {
           childrenPadding: EdgeInsets.zero,
           leading: const Icon(Icons.insights_outlined),
           title: const Text('Analytics'),
-          children: items
-              .map(
+          subtitle: statusText == null ? null : Text(statusText),
+          children: [
+            if (items.isEmpty)
+              const ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.tune_outlined),
+                title: Text('Not configured'),
+              ),
+            if (items.isNotEmpty)
+              ...items.map(
                 (item) => ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
@@ -331,17 +382,33 @@ class DailySummarySection extends ConsumerWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-              )
-              .toList(growable: false),
+              ),
+          ],
         ),
       ),
     ];
   }
 
-  List<_AnalyticsItem> _analyticsItems(Map<String, double> summary) {
+  Future<void> _setDailyCalculationExportIneligible(
+    WidgetRef ref,
+    bool ineligible,
+  ) async {
+    await ref
+        .read(settingsServiceProvider)
+        .setDailyCalculationExportIneligible(today, ineligible: ineligible);
+    ref.invalidate(dailySummaryDataProvider(today));
+  }
+
+  List<_AnalyticsItem> _analyticsItems(
+    Map<String, double> summary,
+    Set<NutritionMetricType> configuredMetrics,
+  ) {
     final calories = summary[NutritionMetricType.calories.key] ?? 0;
     final pufa = summary[NutritionMetricType.polyunsaturatedFat.key] ?? 0;
-    final pufaPercent = calories > 0 && pufa > 0
+    final hasPufaConfigured = configuredMetrics.contains(
+      NutritionMetricType.polyunsaturatedFat,
+    );
+    final pufaPercent = calories > 0 && pufa > 0 && hasPufaConfigured
         ? (pufa * 9 / calories) * 100
         : null;
 
@@ -357,9 +424,14 @@ class DailySummarySection extends ConsumerWidget {
 
   double? _metricRatio(
     Map<String, double> summary,
+    Set<NutritionMetricType> configuredMetrics,
     NutritionMetricType numerator,
     NutritionMetricType denominator,
   ) {
+    if (!configuredMetrics.contains(numerator) ||
+        !configuredMetrics.contains(denominator)) {
+      return null;
+    }
     final numeratorValue = summary[numerator.key] ?? 0;
     final denominatorValue = summary[denominator.key] ?? 0;
     if (numeratorValue <= 0 || denominatorValue <= 0) return null;

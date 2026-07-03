@@ -373,6 +373,44 @@ class DiaryService {
     return summary;
   }
 
+  Future<Set<NutritionMetricType>> getConfiguredMetricsForDate(
+    DateTime date,
+  ) async {
+    final bounds = _dayBounds(date);
+
+    final rows =
+        await (_db.select(_db.diaryEntries)..where(
+              (t) =>
+                  t.deletedAt.isNull() &
+                  t.timestamp.isBetweenValues(
+                    bounds.startMs,
+                    bounds.endMsInclusive,
+                  ),
+            ))
+            .get();
+    final foodRows = rows
+        .where((row) => row.type == EntryType.food.index)
+        .toList(growable: false);
+    if (foodRows.isEmpty) return const <NutritionMetricType>{};
+
+    final metricsByEntryId = await _loadMetricsByEntryId(
+      foodRows.map((row) => row.id).toList(growable: false),
+    );
+
+    final configured = <NutritionMetricType>{};
+    for (final metric in NutritionMetricType.values) {
+      final isConfiguredForEveryFood = foodRows.every((row) {
+        final metrics =
+            metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{};
+        return metrics.containsKey(metric);
+      });
+      if (isConfiguredForEveryFood) {
+        configured.add(metric);
+      }
+    }
+    return configured;
+  }
+
   Future<List<DiaryEntry>> searchEntrySuggestions(
     String query, {
     required EntryType type,
