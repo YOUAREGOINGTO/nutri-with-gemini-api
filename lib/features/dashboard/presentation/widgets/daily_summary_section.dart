@@ -267,6 +267,11 @@ class DailySummarySection extends ConsumerWidget {
       NutritionMetricType.zinc,
       NutritionMetricType.copper,
     );
+    final potassiumSodium = _metricRatio(
+      summary,
+      NutritionMetricType.potassium,
+      NutritionMetricType.sodium,
+    );
 
     final items = [
       if (calciumPhosphorus != null)
@@ -278,6 +283,11 @@ class DailySummarySection extends ConsumerWidget {
         _RatioItem(
           label: 'Zn:Cu',
           value: '${_formatCompactNumber(zincCopper)}:1',
+        ),
+      if (potassiumSodium != null)
+        _RatioItem(
+          label: 'K:Na',
+          value: '${_formatCompactNumber(potassiumSodium)}:1',
         ),
     ];
 

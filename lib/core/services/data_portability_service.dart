@@ -30,6 +30,7 @@ class DataPortabilityService {
   static const _uuid = Uuid();
   static const _backupVersion = 1;
   static const _appVersion = '0.1.3+4';
+  static const _notConfiguredLabel = 'Not configured';
   static const _baseHeaders = [
     'id',
     'timestamp',
@@ -55,6 +56,7 @@ class DataPortabilityService {
     'PUFA % Calories',
     'Calcium:Phosphorus',
     'Zinc:Copper',
+    'Potassium:Sodium',
   ];
   static const _temperatureCsvHeaders = [
     'id',
@@ -772,13 +774,23 @@ class DataPortabilityService {
     };
   }
 
-  Map<String, double> _reviewMetricJson(
+  Map<String, Object> _reviewMetricJson(
     Map<NutritionMetricType, double> metrics,
   ) {
     return {
       for (final metric in NutritionMetricType.values)
-        metric.key: _roundMetric(metrics[metric] ?? 0),
+        metric.key: _reviewMetricValue(metrics, metric),
     };
+  }
+
+  Object _reviewMetricValue(
+    Map<NutritionMetricType, double> metrics,
+    NutritionMetricType metric,
+  ) {
+    if (metric.blankWhenMissing && !metrics.containsKey(metric)) {
+      return _notConfiguredLabel;
+    }
+    return _roundMetric(metrics[metric] ?? 0);
   }
 
   List<Map<String, Object?>> _reviewAssistantMessages(List<AiChatRow> chats) {
@@ -946,62 +958,78 @@ class DataPortabilityService {
     NutritionMetricType metric,
   ) {
     if (metric.blankWhenMissing && !metrics.containsKey(metric)) {
-      return '';
+      return _notConfiguredLabel;
     }
     return _formatNumber(metrics[metric] ?? 0);
   }
 
   _XlsxCell _xlsxMetricCell(
     Map<NutritionMetricType, double> totals,
-    Set<NutritionMetricType> presentMetrics,
+    Set<NutritionMetricType> configuredMetrics,
     NutritionMetricType metric,
   ) {
-    if (metric.blankWhenMissing && !presentMetrics.contains(metric)) {
-      return _XlsxCell.text('');
+    if (metric.blankWhenMissing && !configuredMetrics.contains(metric)) {
+      return _XlsxCell.text(_notConfiguredLabel);
     }
     return _XlsxCell.number(_roundMetric(totals[metric] ?? 0));
   }
 
   List<_XlsxCell> _dailyAnalyticsCells(
     Map<NutritionMetricType, double> totals,
-    Set<NutritionMetricType> presentMetrics,
+    Set<NutritionMetricType> configuredMetrics,
   ) {
     final calories = totals[NutritionMetricType.calories] ?? 0;
     final pufa = totals[NutritionMetricType.polyunsaturatedFat] ?? 0;
     final pufaPercent = calories > 0 &&
-            presentMetrics.contains(NutritionMetricType.polyunsaturatedFat)
+            configuredMetrics.contains(NutritionMetricType.polyunsaturatedFat)
         ? _roundMetric((pufa * 9 / calories) * 100)
         : null;
 
     return [
-      _XlsxCell.number(pufaPercent),
-      _XlsxCell.number(
+      _dailyAnalyticsValueCell(pufaPercent),
+      _dailyRatioCell(
         _dailyRatio(
           totals,
-          presentMetrics,
+          configuredMetrics,
           NutritionMetricType.calcium,
           NutritionMetricType.phosphorus,
         ),
       ),
-      _XlsxCell.number(
+      _dailyRatioCell(
         _dailyRatio(
           totals,
-          presentMetrics,
+          configuredMetrics,
           NutritionMetricType.zinc,
           NutritionMetricType.copper,
+        ),
+      ),
+      _dailyRatioCell(
+        _dailyRatio(
+          totals,
+          configuredMetrics,
+          NutritionMetricType.potassium,
+          NutritionMetricType.sodium,
         ),
       ),
     ];
   }
 
+  _XlsxCell _dailyAnalyticsValueCell(double? value) {
+    return value == null
+        ? _XlsxCell.text(_notConfiguredLabel)
+        : _XlsxCell.number(value);
+  }
+
+  _XlsxCell _dailyRatioCell(double? value) => _dailyAnalyticsValueCell(value);
+
   double? _dailyRatio(
     Map<NutritionMetricType, double> totals,
-    Set<NutritionMetricType> presentMetrics,
+    Set<NutritionMetricType> configuredMetrics,
     NutritionMetricType numerator,
     NutritionMetricType denominator,
   ) {
-    if (!presentMetrics.contains(numerator) ||
-        !presentMetrics.contains(denominator)) {
+    if (!configuredMetrics.contains(numerator) ||
+        !configuredMetrics.contains(denominator)) {
       return null;
     }
     final denominatorValue = totals[denominator] ?? 0;
@@ -1055,7 +1083,10 @@ class DataPortabilityService {
       final totals = <NutritionMetricType, double>{
         for (final metric in NutritionMetricType.values) metric: 0,
       };
-      final presentMetrics = <NutritionMetricType>{};
+      final configuredMetrics = _configuredMetricsForDailyExport(
+        rows,
+        metricsByEntryId,
+      );
 
       for (final row in rows) {
         final metrics =
@@ -1063,7 +1094,6 @@ class DataPortabilityService {
         for (final metric in NutritionMetricType.values) {
           final value = metrics[metric];
           if (value == null) continue;
-          presentMetrics.add(metric);
           totals[metric] = (totals[metric] ?? 0) + value;
         }
       }
@@ -1072,9 +1102,9 @@ class DataPortabilityService {
         _XlsxCell.text(date),
         _XlsxCell.number(rows.length),
         ...NutritionMetricType.values.map(
-          (metric) => _xlsxMetricCell(totals, presentMetrics, metric),
+          (metric) => _xlsxMetricCell(totals, configuredMetrics, metric),
         ),
-        ..._dailyAnalyticsCells(totals, presentMetrics),
+        ..._dailyAnalyticsCells(totals, configuredMetrics),
       ]);
     }
 
@@ -1119,6 +1149,29 @@ class DataPortabilityService {
       requiredFilePath: 'xl/workbook.xml',
       errorContext: 'daily XLSX',
     );
+  }
+
+  Set<NutritionMetricType> _configuredMetricsForDailyExport(
+    List<DiaryEntryRow> rows,
+    Map<String, Map<NutritionMetricType, double>> metricsByEntryId,
+  ) {
+    final foodRows = rows
+        .where((row) => row.type == EntryType.food.index)
+        .toList(growable: false);
+    if (foodRows.isEmpty) return const <NutritionMetricType>{};
+
+    final configured = <NutritionMetricType>{};
+    for (final metric in NutritionMetricType.values) {
+      final isConfiguredForEveryFood = foodRows.every((row) {
+        final metrics =
+            metricsByEntryId[row.id] ?? const <NutritionMetricType, double>{};
+        return metrics.containsKey(metric);
+      });
+      if (isConfiguredForEveryFood) {
+        configured.add(metric);
+      }
+    }
+    return configured;
   }
 
   String _xlsxContentTypesXml() {

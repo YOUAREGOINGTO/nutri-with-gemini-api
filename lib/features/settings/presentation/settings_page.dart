@@ -837,7 +837,7 @@ class _DataSection extends StatelessWidget {
             ListTile(
               title: const Text('Export Daily XLSX'),
               subtitle: const Text(
-                'Save daily totals plus PUFA %, Calcium:Phosphorus, and Zinc:Copper',
+                'Save daily totals plus PUFA %, Ca:P, Zn:Cu, and K:Na',
               ),
               leading: const Icon(Icons.table_chart_outlined),
               trailing: isExportingDailyXlsx
