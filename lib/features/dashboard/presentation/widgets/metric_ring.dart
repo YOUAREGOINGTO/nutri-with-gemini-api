@@ -33,6 +33,10 @@ class MetricRing extends StatelessWidget {
     final isOver = hasGoal && value > goal;
     final totalProgress = hasGoal ? (value / goal).clamp(0.0, 1.0) : 0.0;
     final percentage = hasGoal ? ((value / goal) * 100).round() : 0;
+    final centerLabel = hasGoal ? '$percentage%' : _formatValue(value);
+    final detailLabel = hasGoal
+        ? '${_formatValue(value)}/${_formatValue(goal)} $unit'
+        : _formatConsumption(value);
 
     double subProgress = 0.0;
     double primaryProgress = totalProgress;
@@ -67,14 +71,20 @@ class MetricRing extends StatelessWidget {
                   ),
                 ),
                 Center(
-                  child: Text(
-                    hasGoal ? '$percentage%' : '--',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: isOver
-                          ? color
-                          : Theme.of(context).textTheme.bodyMedium?.color,
+                  child: SizedBox(
+                    width: 48,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        centerLabel,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: isOver
+                              ? color
+                              : Theme.of(context).textTheme.bodyMedium?.color,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -90,9 +100,7 @@ class MetricRing extends StatelessWidget {
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
           ),
           Text(
-            hasGoal
-                ? '${_formatValue(value)}/${_formatValue(goal)} $unit'
-                : 'No goal',
+            detailLabel,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -178,5 +186,9 @@ class MetricRing extends StatelessWidget {
       return val.round().toString();
     }
     return val.toStringAsFixed(1);
+  }
+
+  String _formatConsumption(double val) {
+    return '${_formatValue(val)} $unit';
   }
 }
